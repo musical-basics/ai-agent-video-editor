@@ -121,7 +121,7 @@ export function TimelinePanel({
   const playheadLeft = `${playheadTime * pxPerSecond}px`;
 
   return (
-    <section className="rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-sm">
+    <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-300">
@@ -144,7 +144,7 @@ export function TimelinePanel({
         </div>
       </div>
 
-      <div ref={scrollRef} className="overflow-x-auto">
+      <div ref={scrollRef} className="w-full max-w-full overflow-x-auto overscroll-x-contain">
         <div
           className="grid"
           style={{

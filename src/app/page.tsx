@@ -47,7 +47,7 @@ export default function Home() {
 
   return (
     <main className="min-h-screen bg-zinc-100 text-zinc-950">
-      <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-5 py-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-7xl min-w-0 flex-col gap-6 px-5 py-6 lg:px-8">
         <header className="grid gap-4 border-b border-zinc-200 pb-5 lg:grid-cols-[1fr_auto] lg:items-end">
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2 text-sm font-medium text-zinc-600">

@@ -11,7 +11,7 @@ The core idea is simple: the human marks what needs to change, the AI performs t
 - One active seeded project for the Piano Hand Size Part 2 workflow
 - Horizontal rough-cut timeline with clip blocks, tracks, time ruler, and thumbnails
 - Preview pane for the selected timeline clip, including local video playback where supported
-- Playback controls with start, pause, stop, previous/next clip, scroll-to-cursor, and follow-cursor mode
+- Playback controls with start, pause, stop, previous/next clip, spacebar toggle, scroll-to-cursor, and follow-cursor mode
 - Pass tracker for plan, descriptors, shortlist, paper edit, assembly, and rough cut review
 - User review notes for clip rotation, trims, reorder requests, issues, decisions, and general comments
 - AI fix-log notes in the same project ledger

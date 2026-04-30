@@ -173,6 +173,27 @@ export function EditorWorkbench({
     return () => cancelAnimationFrame(animationFrame);
   }, [isPlaying, totalDuration]);
 
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.code !== "Space") return;
+
+      const target = event.target as HTMLElement | null;
+      const isTyping =
+        target?.tagName === "INPUT" ||
+        target?.tagName === "TEXTAREA" ||
+        target?.tagName === "SELECT" ||
+        target?.isContentEditable;
+
+      if (isTyping) return;
+
+      event.preventDefault();
+      setIsPlaying((value) => !value);
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   function applyQuickAction(action: QuickAction) {
     if (!selectedClip) return;
     setNoteType(action.noteType);
@@ -203,7 +224,7 @@ export function EditorWorkbench({
   }
 
   return (
-    <section className="grid gap-4">
+    <section className="grid min-w-0 gap-4">
       <TransportBar
         isPlaying={isPlaying}
         followPlayhead={followPlayhead}
@@ -218,7 +239,7 @@ export function EditorWorkbench({
         onToggleFollow={() => setFollowPlayhead((value) => !value)}
       />
 
-      <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.74fr)_minmax(430px,1fr)]">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.74fr)_minmax(430px,1fr)]">
         <PreviewPane
           clip={selectedClip}
           clipNotes={clipNotes}
@@ -226,7 +247,7 @@ export function EditorWorkbench({
           playheadTime={playheadTime}
         />
 
-        <div id="note-form" className="rounded-lg border border-zinc-200 bg-white">
+        <div id="note-form" className="min-w-0 rounded-lg border border-zinc-200 bg-white">
           <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
             <div>
               <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
@@ -419,6 +440,7 @@ function TransportBar({
           <button
             type="button"
             onClick={onTogglePlay}
+            title="Start or pause playback with Space"
             className="inline-flex h-9 items-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-semibold text-white transition hover:bg-zinc-800"
           >
             {isPlaying ? (
@@ -428,6 +450,9 @@ function TransportBar({
             )}
             {isPlaying ? "Pause" : "Start"}
           </button>
+          <span className="hidden rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs font-semibold text-zinc-500 sm:inline-flex">
+            Space
+          </span>
           <button
             type="button"
             onClick={onStop}
@@ -530,7 +555,7 @@ function PreviewPane({
   }
 
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white">
+    <div className="min-w-0 rounded-lg border border-zinc-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
         <div>
           <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
