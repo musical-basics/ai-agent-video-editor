@@ -1,36 +1,51 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# AI Agent Video Editor
 
-## Getting Started
+A reusable, notes-first review app for AI-assisted video editing.
 
-First, run the development server:
+The core idea is simple: the human marks what needs to change, the AI performs the next edit pass, and the AI writes a fix log back into the same project database so the next review can verify what actually changed.
+
+## Current Scope
+
+- Next.js App Router dashboard
+- Local SQLite database at `.cut-notes/cut-notes.sqlite`
+- One active seeded project for the Piano Hand Size Part 2 workflow
+- Pass tracker for plan, descriptors, shortlist, paper edit, assembly, and rough cut review
+- User review notes for clip rotation, trims, reorder requests, issues, decisions, and general comments
+- AI fix-log notes in the same project ledger
+
+## Workflow
+
+1. Open the app during rough-cut review.
+2. Add notes against the current pass.
+3. Run the next AI edit pass using the open notes as the checklist.
+4. After the edit, the AI adds `fix_log` notes describing what changed.
+5. Review the next render and keep iterating from the same database.
+
+## Local Development
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Checks
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```bash
+npm run lint
+npm run build
+```
 
-## Learn More
+## Data Model
 
-To learn more about Next.js, take a look at the following resources:
+The app keeps all project information under one project entry and connects related records by `projectId`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `projects`: root project state and metadata
+- `assets`: source clips, transcripts, renders, contact sheets, and placeholders
+- `passes`: named workflow stages
+- `timeline_items`: ordered edit decisions for an assembly
+- `notes`: user notes and AI fix logs
+- `render_jobs`: render commands and outputs
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+The SQLite file is local-only and ignored by git. Future versions can add import/export commands when a project needs to move between machines.
