@@ -1,19 +1,24 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownToLine,
   ArrowUpToLine,
   BadgeAlert,
   Clock3,
   FileVideo,
+  LocateFixed,
   MessageSquareText,
   NotebookPen,
+  Pause,
   Play,
   RotateCcw,
   RotateCw,
   Save,
   Scissors,
+  SkipBack,
+  SkipForward,
+  Square,
   type LucideIcon,
 } from "lucide-react";
 import { createNote } from "@/app/actions";
@@ -107,6 +112,10 @@ function humanize(value: string) {
   return value.replaceAll("_", " ");
 }
 
+function clamp(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
 export function EditorWorkbench({
   project,
   passes,
@@ -118,16 +127,51 @@ export function EditorWorkbench({
   timelineClips: TimelineClip[];
   notes: Note[];
 }) {
-  const [selectedClipId, setSelectedClipId] = useState(timelineClips[0]?.id ?? "");
   const [selectedPassId, setSelectedPassId] = useState("pass-5-rough-cut");
   const [noteType, setNoteType] = useState<NoteType>("clip_review");
   const [draft, setDraft] = useState("");
-  const selectedClip =
-    timelineClips.find((clip) => clip.id === selectedClipId) ?? timelineClips[0];
+  const [playheadTime, setPlayheadTime] = useState(0);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [followPlayhead, setFollowPlayhead] = useState(true);
+  const [scrollSignal, setScrollSignal] = useState(0);
+  const totalDuration = useMemo(
+    () => Math.max(0, ...timelineClips.map((clip) => clip.timelineEnd)),
+    [timelineClips],
+  );
+  const selectedClip = clipAtTime(timelineClips, playheadTime) ?? timelineClips[0];
   const clipNotes = useMemo(
     () => notes.filter((note) => note.timelineItemId === selectedClip?.id),
     [notes, selectedClip?.id],
   );
+  const selectedClipIndex = selectedClip
+    ? timelineClips.findIndex((clip) => clip.id === selectedClip.id)
+    : -1;
+
+  useEffect(() => {
+    if (!isPlaying || totalDuration <= 0) return;
+
+    let animationFrame = 0;
+    let previousTime = performance.now();
+
+    const tick = (timestamp: number) => {
+      const deltaSeconds = (timestamp - previousTime) / 1000;
+      previousTime = timestamp;
+
+      setPlayheadTime((currentTime) => {
+        const nextTime = currentTime + deltaSeconds;
+        if (nextTime >= totalDuration) {
+          setIsPlaying(false);
+          return totalDuration;
+        }
+        return nextTime;
+      });
+
+      animationFrame = requestAnimationFrame(tick);
+    };
+
+    animationFrame = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animationFrame);
+  }, [isPlaying, totalDuration]);
 
   function applyQuickAction(action: QuickAction) {
     if (!selectedClip) return;
@@ -135,10 +179,52 @@ export function EditorWorkbench({
     setDraft(action.body(selectedClip));
   }
 
+  function seekToTime(nextTime: number) {
+    const boundedTime = clamp(nextTime, 0, totalDuration);
+    setPlayheadTime(boundedTime);
+  }
+
+  function selectClip(clipId: string) {
+    const clip = timelineClips.find((item) => item.id === clipId);
+    if (clip) setPlayheadTime(clip.timelineStart);
+  }
+
+  function stopPlayback() {
+    setIsPlaying(false);
+    seekToTime(0);
+  }
+
+  function jumpToClip(direction: -1 | 1) {
+    if (selectedClipIndex < 0) return;
+    const nextClip = timelineClips[clamp(selectedClipIndex + direction, 0, timelineClips.length - 1)];
+    if (!nextClip) return;
+    setPlayheadTime(nextClip.timelineStart);
+    setScrollSignal((value) => value + 1);
+  }
+
   return (
     <section className="grid gap-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(380px,0.75fr)]">
-        <PreviewPane clip={selectedClip} clipNotes={clipNotes} />
+      <TransportBar
+        isPlaying={isPlaying}
+        followPlayhead={followPlayhead}
+        playheadTime={playheadTime}
+        totalDuration={totalDuration}
+        onTogglePlay={() => setIsPlaying((value) => !value)}
+        onStop={stopPlayback}
+        onJumpPrevious={() => jumpToClip(-1)}
+        onJumpNext={() => jumpToClip(1)}
+        onSeek={seekToTime}
+        onScrollToCursor={() => setScrollSignal((value) => value + 1)}
+        onToggleFollow={() => setFollowPlayhead((value) => !value)}
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.74fr)_minmax(430px,1fr)]">
+        <PreviewPane
+          clip={selectedClip}
+          clipNotes={clipNotes}
+          isPlaying={isPlaying}
+          playheadTime={playheadTime}
+        />
 
         <div id="note-form" className="rounded-lg border border-zinc-200 bg-white">
           <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
@@ -215,7 +301,7 @@ export function EditorWorkbench({
               <select
                 name="timelineItemId"
                 value={selectedClip?.id ?? ""}
-                onChange={(event) => setSelectedClipId(event.target.value)}
+                onChange={(event) => selectClip(event.target.value)}
                 className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
               >
                 {timelineClips.map((clip) => (
@@ -276,30 +362,168 @@ export function EditorWorkbench({
         clips={timelineClips}
         notes={notes}
         selectedClipId={selectedClip?.id}
-        onSelectClip={setSelectedClipId}
+        playheadTime={playheadTime}
+        followPlayhead={followPlayhead}
+        scrollSignal={scrollSignal}
+        onSelectClip={selectClip}
+        onSeek={seekToTime}
       />
     </section>
+  );
+}
+
+function clipAtTime(clips: TimelineClip[], time: number) {
+  return (
+    clips.find((clip) => time >= clip.timelineStart && time < clip.timelineEnd) ??
+    clips.at(-1)
+  );
+}
+
+function TransportBar({
+  isPlaying,
+  followPlayhead,
+  playheadTime,
+  totalDuration,
+  onTogglePlay,
+  onStop,
+  onJumpPrevious,
+  onJumpNext,
+  onSeek,
+  onScrollToCursor,
+  onToggleFollow,
+}: {
+  isPlaying: boolean;
+  followPlayhead: boolean;
+  playheadTime: number;
+  totalDuration: number;
+  onTogglePlay: () => void;
+  onStop: () => void;
+  onJumpPrevious: () => void;
+  onJumpNext: () => void;
+  onSeek: (time: number) => void;
+  onScrollToCursor: () => void;
+  onToggleFollow: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-zinc-200 bg-white px-4 py-3">
+      <div className="grid gap-3 lg:grid-cols-[auto_1fr_auto] lg:items-center">
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={onJumpPrevious}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-zinc-700 transition hover:bg-white"
+            title="Previous clip"
+          >
+            <SkipBack className="h-4 w-4" aria-hidden="true" />
+          </button>
+          <button
+            type="button"
+            onClick={onTogglePlay}
+            className="inline-flex h-9 items-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-semibold text-white transition hover:bg-zinc-800"
+          >
+            {isPlaying ? (
+              <Pause className="h-4 w-4" aria-hidden="true" />
+            ) : (
+              <Play className="h-4 w-4" aria-hidden="true" />
+            )}
+            {isPlaying ? "Pause" : "Start"}
+          </button>
+          <button
+            type="button"
+            onClick={onStop}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition hover:bg-white"
+          >
+            <Square className="h-3.5 w-3.5" aria-hidden="true" />
+            Stop
+          </button>
+          <button
+            type="button"
+            onClick={onJumpNext}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-zinc-700 transition hover:bg-white"
+            title="Next clip"
+          >
+            <SkipForward className="h-4 w-4" aria-hidden="true" />
+          </button>
+        </div>
+
+        <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          Playback Cursor
+          <input
+            type="range"
+            min={0}
+            max={Math.max(1, totalDuration)}
+            step={0.1}
+            value={playheadTime}
+            onChange={(event) => onSeek(Number(event.target.value))}
+            className="w-full accent-zinc-950"
+          />
+        </label>
+
+        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+          <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-sm font-semibold tabular-nums text-zinc-800">
+            {formatTime(playheadTime)} / {formatTime(totalDuration)}
+          </span>
+          <button
+            type="button"
+            onClick={onScrollToCursor}
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition hover:bg-white"
+          >
+            <LocateFixed className="h-4 w-4" aria-hidden="true" />
+            Scroll
+          </button>
+          <button
+            type="button"
+            onClick={onToggleFollow}
+            className={`inline-flex h-9 items-center rounded-md border px-3 text-sm font-semibold transition ${
+              followPlayhead
+                ? "border-zinc-950 bg-zinc-950 text-white"
+                : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-white"
+            }`}
+          >
+            Follow
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
 function PreviewPane({
   clip,
   clipNotes,
+  isPlaying,
+  playheadTime,
 }: {
   clip?: TimelineClip;
   clipNotes: Note[];
+  isPlaying: boolean;
+  playheadTime: number;
 }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
   const thumbnail = mediaUrl(clip?.asset?.metadata.thumbnailPath);
   const source = mediaUrl(clip?.asset?.metadata.relativePath);
   const canPreviewVideo = clip?.asset?.kind === "video" && source;
-  const videoSource =
-    canPreviewVideo && clip?.sourceIn !== undefined
-      ? `${source}#t=${clip.sourceIn}`
-      : source;
+  const clipOffset = clip ? clamp(playheadTime - clip.timelineStart, 0, clip.duration) : 0;
+  const sourceTime = (clip?.sourceIn ?? 0) + clipOffset;
+
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || !canPreviewVideo) return;
+
+    if (Number.isFinite(sourceTime) && Math.abs(video.currentTime - sourceTime) > 0.75) {
+      video.currentTime = sourceTime;
+    }
+
+    if (isPlaying) {
+      void video.play().catch(() => undefined);
+    } else {
+      video.pause();
+    }
+  }, [canPreviewVideo, clip?.id, isPlaying, sourceTime]);
 
   if (!clip) {
     return (
-      <div className="grid min-h-[480px] place-items-center rounded-lg border border-zinc-200 bg-white text-sm text-zinc-500">
+      <div className="grid min-h-[360px] place-items-center rounded-lg border border-zinc-200 bg-white text-sm text-zinc-500">
         No timeline clips found.
       </div>
     );
@@ -324,15 +548,16 @@ function PreviewPane({
 
       <div className="grid gap-4 p-4">
         <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
-          <div className="aspect-video bg-black">
+          <div className="h-[220px] bg-black sm:h-[260px]">
             {canPreviewVideo ? (
               <video
+                ref={videoRef}
                 key={clip.id}
                 className="h-full w-full object-contain"
                 controls
                 poster={thumbnail}
                 preload="metadata"
-                src={videoSource}
+                src={source}
               />
             ) : thumbnail ? (
               <div

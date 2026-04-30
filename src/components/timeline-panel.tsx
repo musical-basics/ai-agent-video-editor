@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, type MouseEvent } from "react";
 import {
   Clock3,
   Film,
@@ -55,13 +56,23 @@ export function TimelinePanel({
   clips,
   notes,
   selectedClipId,
+  playheadTime = 0,
+  followPlayhead = false,
+  scrollSignal = 0,
   onSelectClip,
+  onSeek,
 }: {
   clips: TimelineClip[];
   notes: Note[];
   selectedClipId?: string;
+  playheadTime?: number;
+  followPlayhead?: boolean;
+  scrollSignal?: number;
   onSelectClip?: (clipId: string) => void;
+  onSeek?: (time: number) => void;
 }) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const lastScrollSignal = useRef(scrollSignal);
   const totalSeconds = Math.ceil(
     Math.max(60, ...clips.map((clip) => clip.timelineEnd)) / 15,
   ) * 15;
@@ -77,6 +88,38 @@ export function TimelinePanel({
     noteCounts.set(note.timelineItemId, (noteCounts.get(note.timelineItemId) ?? 0) + 1);
   }
 
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller) return;
+
+    const forced = scrollSignal !== lastScrollSignal.current;
+    lastScrollSignal.current = scrollSignal;
+
+    if (!followPlayhead && !forced) return;
+
+    const cursorX = 124 + playheadTime * pxPerSecond;
+    const leftEdge = scroller.scrollLeft;
+    const rightEdge = leftEdge + scroller.clientWidth;
+    const shouldScroll =
+      forced || cursorX < leftEdge + 180 || cursorX > rightEdge - 180;
+
+    if (!shouldScroll) return;
+
+    scroller.scrollTo({
+      left: Math.max(0, cursorX - scroller.clientWidth / 2),
+      behavior: forced ? "smooth" : "auto",
+    });
+  }, [followPlayhead, playheadTime, scrollSignal]);
+
+  function seekFromMouse(event: MouseEvent<HTMLDivElement>) {
+    if (!onSeek) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const x = event.clientX - rect.left;
+    onSeek(Math.max(0, x / pxPerSecond));
+  }
+
+  const playheadLeft = `${playheadTime * pxPerSecond}px`;
+
   return (
     <section className="rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-sm">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
@@ -86,7 +129,7 @@ export function TimelinePanel({
             Rough Cut Timeline
           </h2>
           <p className="mt-1 text-sm text-zinc-400">
-            Pass 4 assembly as visible clip blocks. Scroll horizontally and use the clip IDs when leaving notes.
+            Pass 4 assembly as visible clip blocks. Click the timeline to move the playback cursor.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-zinc-300">
@@ -101,7 +144,7 @@ export function TimelinePanel({
         </div>
       </div>
 
-      <div className="overflow-x-auto">
+      <div ref={scrollRef} className="overflow-x-auto">
         <div
           className="grid"
           style={{
@@ -112,7 +155,10 @@ export function TimelinePanel({
           <div className="sticky left-0 z-20 border-r border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Tracks
           </div>
-          <div className="relative h-10 border-b border-zinc-800 bg-zinc-900">
+          <div
+            className="relative h-10 cursor-crosshair border-b border-zinc-800 bg-zinc-900"
+            onClick={seekFromMouse}
+          >
             <div
               className="absolute inset-0"
               style={{
@@ -131,6 +177,14 @@ export function TimelinePanel({
                 </span>
               </div>
             ))}
+            <div
+              className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-red-500"
+              style={{ left: playheadLeft }}
+            >
+              <span className="absolute left-1 top-1 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">
+                {formatTime(playheadTime)}
+              </span>
+            </div>
           </div>
 
           {laneOrder.map((lane) => {
@@ -142,12 +196,17 @@ export function TimelinePanel({
                   {lane.label}
                 </div>
                 <div
-                  className="relative h-28 border-t border-zinc-800 bg-zinc-950"
+                  className="relative h-28 cursor-crosshair border-t border-zinc-800 bg-zinc-950"
+                  onClick={seekFromMouse}
                   style={{
                     backgroundImage:
                       "repeating-linear-gradient(90deg, rgba(255,255,255,0.08) 0 1px, transparent 1px 35px)",
                   }}
                 >
+                  <div
+                    className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-red-500"
+                    style={{ left: playheadLeft }}
+                  />
                   {laneClips.map((clip) => {
                     const thumbnail = mediaUrl(clip.asset?.metadata.thumbnailPath);
                     const width = Math.max(56, clip.duration * pxPerSecond - 4);
@@ -157,7 +216,10 @@ export function TimelinePanel({
                       <button
                         key={clip.id}
                         type="button"
-                        onClick={() => onSelectClip?.(clip.id)}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          onSelectClip?.(clip.id);
+                        }}
                         className={`absolute top-3 flex h-[88px] flex-col overflow-hidden rounded-md border text-left shadow-sm transition hover:z-10 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white/70 ${selectedClipId === clip.id ? "z-10 ring-2 ring-white" : ""} ${clipStyles[clip.role]}`}
                         style={{
                           left: `${clip.timelineStart * pxPerSecond}px`,
