@@ -1268,3 +1268,9 @@ export const pass7TimelineSeed: SeedTimelineItem[] = pass6TimelineSeed.flatMap((
       return [carryToPass7(item)];
   }
 });
+
+export const pass8TimelineSeed: SeedTimelineItem[] = pass7TimelineSeed.map((item) => ({
+  ...item,
+  id: item.id.replace(/^p7-/, "p8-"),
+  notes: item.notes.replace(/^V4:/, "V5 / Pass 8:"),
+}));
