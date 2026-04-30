@@ -1,41 +1,51 @@
 "use client";
 
 import { useEffect, useRef, type MouseEvent } from "react";
-import {
-  Clock3,
-  Film,
-  MessageSquareText,
-  MousePointer2,
-  Play,
-  RotateCw,
-  Scissors,
-  SendToBack,
-} from "lucide-react";
+import { MessageSquareText } from "lucide-react";
 import type { Note, TimelineClip, TimelineRole } from "@/lib/types";
 
 const pxPerSecond = 7;
 const laneOrder: Array<{ role: TimelineRole; label: string }> = [
-  { role: "title_card", label: "Titles" },
-  { role: "a_roll", label: "A-Roll" },
-  { role: "b_roll", label: "B-Roll" },
-  { role: "ambient", label: "Ambient" },
-  { role: "still", label: "Stills" },
-  { role: "placeholder", label: "Pickups" },
+  { role: "title_card", label: "title" },
+  { role: "a_roll", label: "a-roll" },
+  { role: "b_roll", label: "b-roll" },
+  { role: "ambient", label: "ambient" },
+  { role: "still", label: "still" },
+  { role: "placeholder", label: "pickup" },
 ];
 
-const clipStyles: Record<TimelineRole, string> = {
-  a_roll: "border-sky-500 bg-sky-950/90 text-sky-50",
-  b_roll: "border-teal-500 bg-teal-950/90 text-teal-50",
-  ambient: "border-emerald-500 bg-emerald-950/90 text-emerald-50",
-  title_card: "border-violet-500 bg-violet-950/90 text-violet-50",
-  placeholder: "border-amber-400 bg-amber-950/90 text-amber-50",
-  still: "border-rose-500 bg-rose-950/90 text-rose-50",
+const clipBase: Record<TimelineRole, string> = {
+  a_roll: "bg-blue-700 border-blue-500 text-blue-50",
+  b_roll: "bg-teal-800 border-teal-600 text-teal-50",
+  ambient: "bg-neutral-700 border-neutral-500 text-neutral-100",
+  title_card: "bg-purple-800 border-purple-600 text-purple-50",
+  still: "bg-amber-800 border-amber-600 text-amber-50",
+  placeholder:
+    "bg-neutral-800 border-dashed border-neutral-600 text-neutral-300",
+};
+
+const clipSelected: Record<TimelineRole, string> = {
+  a_roll: "bg-blue-500 border-blue-300 ring-2 ring-blue-300",
+  b_roll: "bg-teal-600 border-teal-400 ring-2 ring-teal-400",
+  ambient: "bg-neutral-500 border-neutral-300 ring-2 ring-neutral-300",
+  title_card: "bg-purple-600 border-purple-400 ring-2 ring-purple-400",
+  still: "bg-amber-600 border-amber-400 ring-2 ring-amber-400",
+  placeholder: "bg-neutral-600 border-neutral-400 ring-2 ring-neutral-400",
+};
+
+const legendSwatch: Record<TimelineRole, string> = {
+  a_roll: "bg-blue-700 border-blue-500",
+  b_roll: "bg-teal-800 border-teal-600",
+  ambient: "bg-neutral-700 border-neutral-500",
+  title_card: "bg-purple-800 border-purple-600",
+  still: "bg-amber-800 border-amber-600",
+  placeholder: "bg-neutral-800 border-dashed border-neutral-600",
 };
 
 function formatTime(totalSeconds: number) {
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.floor(totalSeconds % 60);
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function mediaUrl(pathValue: unknown) {
@@ -97,7 +107,7 @@ export function TimelinePanel({
 
     if (!followPlayhead && !forced) return;
 
-    const cursorX = 124 + playheadTime * pxPerSecond;
+    const cursorX = 92 + playheadTime * pxPerSecond;
     const leftEdge = scroller.scrollLeft;
     const rightEdge = leftEdge + scroller.clientWidth;
     const shouldScroll =
@@ -121,67 +131,38 @@ export function TimelinePanel({
   const playheadLeft = `${playheadTime * pxPerSecond}px`;
 
   return (
-    <section className="min-w-0 max-w-full overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950 text-zinc-100 shadow-sm">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-300">
-            <Film className="h-4 w-4" aria-hidden="true" />
-            Rough Cut Timeline
-          </h2>
-          <p className="mt-1 text-sm text-zinc-400">
-            Pass 4 assembly as visible clip blocks. Click the timeline to move the playback cursor.
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-zinc-300">
-          <span className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1">
-            <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-            {formatTime(totalSeconds)}
-          </span>
-          <span className="inline-flex items-center gap-1 rounded-md border border-zinc-700 bg-zinc-900 px-2 py-1">
-            <MousePointer2 className="h-3.5 w-3.5" aria-hidden="true" />
-            {clips.length} clips
-          </span>
-        </div>
-      </div>
-
+    <section className="min-w-0 max-w-full overflow-hidden border-y border-neutral-800 bg-neutral-950">
       <div ref={scrollRef} className="w-full max-w-full overflow-x-auto overscroll-x-contain">
         <div
           className="grid"
           style={{
-            gridTemplateColumns: "124px 1fr",
-            width: `${timelineWidth + 124}px`,
+            gridTemplateColumns: "92px 1fr",
+            width: `${timelineWidth + 92}px`,
           }}
         >
-          <div className="sticky left-0 z-20 border-r border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-            Tracks
+          <div className="sticky left-0 z-20 border-r border-neutral-800 bg-neutral-950 px-2 py-1 text-[10px] uppercase tracking-widest text-neutral-600">
+            tracks
           </div>
           <div
-            className="relative h-10 cursor-crosshair border-b border-zinc-800 bg-zinc-900"
+            className="relative h-6 cursor-crosshair border-b border-neutral-800 bg-neutral-900"
             onClick={seekFromMouse}
           >
-            <div
-              className="absolute inset-0"
-              style={{
-                backgroundImage:
-                  "repeating-linear-gradient(90deg, rgba(255,255,255,0.16) 0 1px, transparent 1px 35px)",
-              }}
-            />
             {ticks.map((tick) => (
               <div
                 key={tick}
-                className="absolute top-0 h-full border-l border-zinc-600"
+                className="absolute top-0 h-full border-l border-neutral-800"
                 style={{ left: `${tick * pxPerSecond}px` }}
               >
-                <span className="ml-1 text-xs tabular-nums text-zinc-400">
+                <span className="ml-1 text-[10px] tabular-nums text-neutral-600">
                   {formatTime(tick)}
                 </span>
               </div>
             ))}
             <div
-              className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-red-500"
+              className="pointer-events-none absolute inset-y-0 z-30 w-px bg-red-500"
               style={{ left: playheadLeft }}
             >
-              <span className="absolute left-1 top-1 rounded bg-red-500 px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-white">
+              <span className="absolute left-1 top-0.5 rounded bg-red-500 px-1 py-px text-[9px] font-semibold tabular-nums text-white">
                 {formatTime(playheadTime)}
               </span>
             </div>
@@ -192,25 +173,25 @@ export function TimelinePanel({
 
             return (
               <div key={lane.role} className="contents">
-                <div className="sticky left-0 z-20 flex h-28 items-center border-r border-t border-zinc-800 bg-zinc-950 px-3 text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                <div className="sticky left-0 z-20 flex h-14 items-center border-r border-t border-neutral-800 bg-neutral-950 px-2 text-[10px] uppercase tracking-widest text-neutral-500">
                   {lane.label}
                 </div>
                 <div
-                  className="relative h-28 cursor-crosshair border-t border-zinc-800 bg-zinc-950"
+                  className="relative h-14 cursor-crosshair border-t border-neutral-800/60 bg-neutral-900/40"
                   onClick={seekFromMouse}
-                  style={{
-                    backgroundImage:
-                      "repeating-linear-gradient(90deg, rgba(255,255,255,0.08) 0 1px, transparent 1px 35px)",
-                  }}
                 >
                   <div
-                    className="pointer-events-none absolute inset-y-0 z-30 w-0.5 bg-red-500"
+                    className="pointer-events-none absolute inset-y-0 z-30 w-px bg-red-500"
                     style={{ left: playheadLeft }}
                   />
                   {laneClips.map((clip) => {
                     const thumbnail = mediaUrl(clip.asset?.metadata.thumbnailPath);
-                    const width = Math.max(56, clip.duration * pxPerSecond - 4);
+                    const width = Math.max(48, clip.duration * pxPerSecond - 2);
                     const notesForClip = noteCounts.get(clip.id) ?? 0;
+                    const isSelected = selectedClipId === clip.id;
+                    const colorClass = isSelected
+                      ? clipSelected[clip.role]
+                      : clipBase[clip.role];
 
                     return (
                       <button
@@ -220,42 +201,32 @@ export function TimelinePanel({
                           event.stopPropagation();
                           onSelectClip?.(clip.id);
                         }}
-                        className={`absolute top-3 flex h-[88px] flex-col overflow-hidden rounded-md border text-left shadow-sm transition hover:z-10 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white/70 ${selectedClipId === clip.id ? "z-10 ring-2 ring-white" : ""} ${clipStyles[clip.role]}`}
+                        className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass}`}
                         style={{
                           left: `${clip.timelineStart * pxPerSecond}px`,
                           width: `${width}px`,
                         }}
                         title={`${clipLabel(clip)} | ${formatTime(clip.timelineStart)}-${formatTime(clip.timelineEnd)} | ${clip.notes ?? ""}`}
                       >
-                        <div className="flex items-center justify-between gap-1 px-2 py-1 text-[11px] font-semibold">
-                          <span className="truncate">{clipLabel(clip)}</span>
-                          {notesForClip > 0 ? (
-                            <span className="inline-flex items-center gap-1 rounded bg-white/15 px-1.5 py-0.5">
-                              <MessageSquareText className="h-3 w-3" aria-hidden="true" />
-                              {notesForClip}
-                            </span>
-                          ) : null}
+                        <div className="flex items-center gap-1 px-1.5 py-0.5">
+                          <span className="truncate text-[10px] font-semibold leading-tight text-white/90">
+                            {clipLabel(clip)}
+                          </span>
                         </div>
                         <div
-                          className="mx-1 min-h-0 flex-1 rounded-sm bg-black/35 bg-cover bg-center"
+                          className="mx-1 min-h-0 flex-1 rounded-sm bg-black/30 bg-cover bg-center"
                           style={
                             thumbnail
                               ? { backgroundImage: `url(${thumbnail})` }
                               : undefined
                           }
-                        >
-                          {!thumbnail ? (
-                            <div className="grid h-full place-items-center text-[10px] font-semibold uppercase tracking-wide text-white/55">
-                              {clip.textOverlay ? "Text" : "Clip"}
-                            </div>
-                          ) : null}
-                        </div>
-                        <div className="mx-1 mb-1 mt-1 h-2 rounded-full bg-white/15">
-                          <div
-                            className="h-full rounded-full bg-white/45"
-                            style={{ width: `${Math.min(100, Math.max(18, clip.duration * 2))}%` }}
-                          />
-                        </div>
+                        />
+                        {notesForClip > 0 ? (
+                          <span className="absolute right-0 top-0 inline-flex items-center gap-0.5 rounded-bl bg-yellow-500 px-1 py-px text-[9px] font-semibold text-black">
+                            <MessageSquareText className="h-2.5 w-2.5" aria-hidden="true" />
+                            {notesForClip}
+                          </span>
+                        ) : null}
                       </button>
                     );
                   })}
@@ -266,23 +237,15 @@ export function TimelinePanel({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 border-t border-zinc-800 px-4 py-3 text-xs font-medium text-zinc-400">
-        <span className="inline-flex items-center gap-1.5">
-          <RotateCw className="h-3.5 w-3.5" aria-hidden="true" />
-          rotation
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Scissors className="h-3.5 w-3.5" aria-hidden="true" />
-          trim
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <SendToBack className="h-3.5 w-3.5" aria-hidden="true" />
-          move earlier/later
-        </span>
-        <span className="inline-flex items-center gap-1.5">
-          <Play className="h-3.5 w-3.5" aria-hidden="true" />
-          clip blocks select preview
-        </span>
+      <div className="flex flex-wrap items-center gap-3 border-t border-neutral-800 px-3 py-1.5 text-[10px] text-neutral-500">
+        {laneOrder.map((lane) => (
+          <span key={lane.role} className="flex items-center gap-1.5">
+            <span
+              className={`inline-block h-2.5 w-2.5 rounded-sm border ${legendSwatch[lane.role]}`}
+            />
+            {lane.label}
+          </span>
+        ))}
       </div>
     </section>
   );

@@ -48,3 +48,6 @@ next-env.d.ts
 
 # generated review media
 review_cuts/
+
+# repomix snapshots from agent-bus
+ai-agent-video-editor-*.md

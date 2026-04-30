@@ -5,11 +5,7 @@ import {
   ArrowDownToLine,
   ArrowUpToLine,
   BadgeAlert,
-  Clock3,
-  FileVideo,
   LocateFixed,
-  MessageSquareText,
-  NotebookPen,
   Pause,
   Play,
   RotateCcw,
@@ -33,25 +29,46 @@ type QuickAction = {
 };
 
 const noteTypes: Array<{ value: NoteType; label: string }> = [
-  { value: "general", label: "General" },
-  { value: "clip_review", label: "Clip Review" },
-  { value: "rotation", label: "Rotation" },
-  { value: "trim", label: "Trim" },
-  { value: "reorder", label: "Move Front/Back" },
-  { value: "issue", label: "Issue" },
-  { value: "decision", label: "Decision" },
-  { value: "fix_log", label: "AI Fix Log" },
+  { value: "general", label: "general" },
+  { value: "clip_review", label: "clip review" },
+  { value: "rotation", label: "rotation" },
+  { value: "trim", label: "trim" },
+  { value: "reorder", label: "reorder" },
+  { value: "issue", label: "issue" },
+  { value: "decision", label: "decision" },
+  { value: "fix_log", label: "fix log" },
 ];
+
+const noteTypeBadge: Record<string, string> = {
+  general: "bg-neutral-700 text-neutral-300",
+  clip_review: "bg-blue-900 text-blue-300",
+  rotation: "bg-cyan-900 text-cyan-300",
+  trim: "bg-amber-900 text-amber-300",
+  reorder: "bg-violet-900 text-violet-300",
+  issue: "bg-red-900 text-red-300",
+  fix_log: "bg-green-900 text-green-300",
+  render_note: "bg-orange-900 text-orange-300",
+  decision: "bg-emerald-900 text-emerald-300",
+};
+
+const roleBadge: Record<string, string> = {
+  a_roll: "bg-blue-700 text-blue-100",
+  b_roll: "bg-teal-800 text-teal-100",
+  ambient: "bg-neutral-700 text-neutral-200",
+  title_card: "bg-purple-800 text-purple-100",
+  still: "bg-amber-800 text-amber-100",
+  placeholder: "bg-neutral-800 text-neutral-400",
+};
 
 const quickActions: QuickAction[] = [
   {
-    label: "Rotate Clockwise",
+    label: "Rotate CW",
     icon: RotateCw,
     noteType: "rotation",
     body: (clip) => `${clipName(clip)}: rotate this clip 90 degrees clockwise.`,
   },
   {
-    label: "Rotate Counter",
+    label: "Rotate CCW",
     icon: RotateCcw,
     noteType: "rotation",
     body: (clip) => `${clipName(clip)}: rotate this clip 90 degrees counterclockwise.`,
@@ -83,11 +100,10 @@ const quickActions: QuickAction[] = [
 ];
 
 function formatTime(totalSeconds?: number) {
-  if (totalSeconds === undefined) return "--";
-
+  if (totalSeconds === undefined) return "--:--";
   const minutes = Math.floor(totalSeconds / 60);
   const seconds = Math.floor(totalSeconds % 60);
-  return `${minutes}:${seconds.toString().padStart(2, "0")}`;
+  return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
 function mediaUrl(pathValue: unknown) {
@@ -105,7 +121,7 @@ function clipName(clip: TimelineClip) {
 }
 
 function sourceName(clip: TimelineClip) {
-  return clip.asset?.basename ?? clip.textOverlay ?? "No source";
+  return clip.asset?.basename ?? clip.textOverlay ?? "—";
 }
 
 function humanize(value: string) {
@@ -224,7 +240,20 @@ export function EditorWorkbench({
   }
 
   return (
-    <section className="grid min-w-0 gap-4">
+    <section className="flex min-w-0 flex-col overflow-hidden rounded border border-neutral-800 bg-neutral-950 text-neutral-100">
+      <header className="flex flex-none flex-wrap items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-4 py-2">
+        <span className="text-[10px] uppercase tracking-widest text-neutral-500">
+          Editor
+        </span>
+        <span className="text-neutral-700">/</span>
+        <span className="text-sm font-semibold text-neutral-100">
+          {project.name}
+        </span>
+        <span className="ml-auto text-[10px] text-neutral-600">
+          {timelineClips.length} clips · {notes.length} notes
+        </span>
+      </header>
+
       <TransportBar
         isPlaying={isPlaying}
         followPlayhead={followPlayhead}
@@ -239,146 +268,6 @@ export function EditorWorkbench({
         onToggleFollow={() => setFollowPlayhead((value) => !value)}
       />
 
-      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.74fr)_minmax(430px,1fr)]">
-        <PreviewPane
-          clip={selectedClip}
-          clipNotes={clipNotes}
-          isPlaying={isPlaying}
-          playheadTime={playheadTime}
-        />
-
-        <div id="note-form" className="min-w-0 rounded-lg border border-zinc-200 bg-white">
-          <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-            <div>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                Clip Notes
-              </h2>
-              <p className="mt-1 text-sm text-zinc-600">
-                Notes save against the selected timeline clip.
-              </p>
-            </div>
-            <NotebookPen className="h-5 w-5 text-zinc-500" aria-hidden="true" />
-          </div>
-
-          <div className="grid gap-3 border-b border-zinc-200 p-4">
-            <div className="grid grid-cols-2 gap-2">
-              {quickActions.map((action) => {
-                const Icon = action.icon;
-                return (
-                  <button
-                    key={action.label}
-                    type="button"
-                    onClick={() => applyQuickAction(action)}
-                    className="inline-flex h-10 items-center justify-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-xs font-semibold text-zinc-700 transition hover:border-zinc-300 hover:bg-white"
-                  >
-                    <Icon className="h-4 w-4" aria-hidden="true" />
-                    {action.label}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-
-          <form action={createNote} className="grid gap-4 p-4">
-            <input type="hidden" name="projectId" value={project.id} />
-            <input type="hidden" name="author" value="user" />
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                Pass
-                <select
-                  name="passId"
-                  value={selectedPassId}
-                  onChange={(event) => setSelectedPassId(event.target.value)}
-                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                >
-                  {passes.map((pass) => (
-                    <option key={pass.id} value={pass.id}>
-                      {pass.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                Note Type
-                <select
-                  name="noteType"
-                  value={noteType}
-                  onChange={(event) => setNoteType(event.target.value as NoteType)}
-                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                >
-                  {noteTypes.map((type) => (
-                    <option key={type.value} value={type.value}>
-                      {type.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </div>
-
-            <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-              Timeline Clip
-              <select
-                name="timelineItemId"
-                value={selectedClip?.id ?? ""}
-                onChange={(event) => selectClip(event.target.value)}
-                className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-              >
-                {timelineClips.map((clip) => (
-                  <option key={clip.id} value={clip.id}>
-                    {clipName(clip)} - {clip.section}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="grid gap-3 md:grid-cols-2">
-              <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                Start Time
-                <input
-                  name="timecodeStart"
-                  inputMode="decimal"
-                  placeholder={`timeline ${formatTime(selectedClip?.timelineStart)}`}
-                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                />
-              </label>
-
-              <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                End Time
-                <input
-                  name="timecodeEnd"
-                  inputMode="decimal"
-                  placeholder={`timeline ${formatTime(selectedClip?.timelineEnd)}`}
-                  className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                />
-              </label>
-            </div>
-
-            <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-              Note
-              <textarea
-                name="body"
-                rows={6}
-                required
-                value={draft}
-                onChange={(event) => setDraft(event.target.value)}
-                placeholder="Mark rotation, trim points, move earlier/later, or anything the next AI pass needs to fix."
-                className="resize-y rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm leading-6 text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-              />
-            </label>
-
-            <button
-              type="submit"
-              className="inline-flex h-10 w-fit items-center gap-2 rounded-md bg-zinc-950 px-4 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-400"
-            >
-              <Save className="h-4 w-4" aria-hidden="true" />
-              Save Note
-            </button>
-          </form>
-        </div>
-      </div>
-
       <TimelinePanel
         clips={timelineClips}
         notes={notes}
@@ -389,6 +278,148 @@ export function EditorWorkbench({
         onSelectClip={selectClip}
         onSeek={seekToTime}
       />
+
+      <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
+        <div className="w-full flex-none border-b border-neutral-800 xl:w-80 xl:border-b-0 xl:border-r">
+          <PreviewPane
+            clip={selectedClip}
+            clipNotes={clipNotes}
+            isPlaying={isPlaying}
+            playheadTime={playheadTime}
+            onQuickAction={applyQuickAction}
+          />
+        </div>
+
+        <div id="note-form" className="flex min-w-0 flex-1 flex-col">
+          <form action={createNote} className="flex flex-col gap-2 border-b border-neutral-800 p-4">
+            <p className="text-[10px] uppercase tracking-widest text-neutral-600">
+              Add Note
+            </p>
+
+            <input type="hidden" name="projectId" value={project.id} />
+            <input type="hidden" name="author" value="user" />
+
+            <div className="flex flex-wrap gap-2">
+              <select
+                name="passId"
+                value={selectedPassId}
+                onChange={(event) => setSelectedPassId(event.target.value)}
+                className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-600"
+              >
+                {passes.map((pass) => (
+                  <option key={pass.id} value={pass.id}>
+                    {pass.name}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                name="noteType"
+                value={noteType}
+                onChange={(event) => setNoteType(event.target.value as NoteType)}
+                className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-600"
+              >
+                {noteTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+
+              <select
+                name="timelineItemId"
+                value={selectedClip?.id ?? ""}
+                onChange={(event) => selectClip(event.target.value)}
+                className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-600"
+              >
+                {timelineClips.map((clip) => (
+                  <option key={clip.id} value={clip.id}>
+                    {clipName(clip)}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div className="flex gap-2">
+              <input
+                name="timecodeStart"
+                inputMode="decimal"
+                placeholder="Start TC (optional)"
+                className="w-36 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 placeholder:text-neutral-600 outline-none focus:border-blue-600"
+              />
+              <input
+                name="timecodeEnd"
+                inputMode="decimal"
+                placeholder="End TC (optional)"
+                className="w-36 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 placeholder:text-neutral-600 outline-none focus:border-blue-600"
+              />
+            </div>
+
+            <div className="flex gap-2">
+              <textarea
+                name="body"
+                rows={2}
+                required
+                value={draft}
+                onChange={(event) => setDraft(event.target.value)}
+                placeholder="Note body…"
+                className="flex-1 resize-y rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-xs text-neutral-300 placeholder:text-neutral-600 outline-none focus:border-blue-600"
+              />
+              <button
+                type="submit"
+                className="inline-flex h-fit items-center gap-1 self-end rounded bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-600"
+              >
+                <Save className="h-3 w-3" aria-hidden="true" />
+                Add
+              </button>
+            </div>
+          </form>
+
+          <div className="flex-1 overflow-y-auto p-4">
+            <p className="mb-2 text-[10px] uppercase tracking-widest text-neutral-600">
+              Notes On Clip ({clipNotes.length})
+            </p>
+            {clipNotes.length === 0 ? (
+              <p className="text-xs text-neutral-600">No notes for this clip yet.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {clipNotes.map((note) => {
+                  const badgeCls =
+                    noteTypeBadge[note.noteType] ?? "bg-neutral-700 text-neutral-300";
+                  return (
+                    <article
+                      key={note.id}
+                      className="space-y-1 rounded border border-neutral-800 bg-neutral-900 px-3 py-2"
+                    >
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] ${badgeCls}`}>
+                          {humanize(note.noteType)}
+                        </span>
+                        <span className="text-[10px] text-neutral-500">{note.author}</span>
+                        <span className="text-[10px] text-neutral-600">
+                          {humanize(note.status)}
+                        </span>
+                        {note.timecodeStart !== undefined ? (
+                          <span className="text-[10px] tabular-nums text-neutral-600">
+                            {note.timecodeStart}
+                            {note.timecodeEnd !== undefined ? `-${note.timecodeEnd}` : ""}s
+                          </span>
+                        ) : null}
+                        <span className="ml-auto text-[10px] text-neutral-700">
+                          {new Date(note.createdAt).toLocaleTimeString()}
+                        </span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-neutral-300">
+                        {note.body}
+                      </p>
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
     </section>
   );
 }
@@ -426,89 +457,81 @@ function TransportBar({
   onToggleFollow: () => void;
 }) {
   return (
-    <div className="rounded-lg border border-zinc-200 bg-white px-4 py-3">
-      <div className="grid gap-3 lg:grid-cols-[auto_1fr_auto] lg:items-center">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={onJumpPrevious}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-zinc-700 transition hover:bg-white"
-            title="Previous clip"
-          >
-            <SkipBack className="h-4 w-4" aria-hidden="true" />
-          </button>
-          <button
-            type="button"
-            onClick={onTogglePlay}
-            title="Start or pause playback with Space"
-            className="inline-flex h-9 items-center gap-2 rounded-md bg-zinc-950 px-3 text-sm font-semibold text-white transition hover:bg-zinc-800"
-          >
-            {isPlaying ? (
-              <Pause className="h-4 w-4" aria-hidden="true" />
-            ) : (
-              <Play className="h-4 w-4" aria-hidden="true" />
-            )}
-            {isPlaying ? "Pause" : "Start"}
-          </button>
-          <span className="hidden rounded-md border border-zinc-200 bg-zinc-50 px-2 py-1 text-xs font-semibold text-zinc-500 sm:inline-flex">
-            Space
-          </span>
-          <button
-            type="button"
-            onClick={onStop}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition hover:bg-white"
-          >
-            <Square className="h-3.5 w-3.5" aria-hidden="true" />
-            Stop
-          </button>
-          <button
-            type="button"
-            onClick={onJumpNext}
-            className="inline-flex h-9 w-9 items-center justify-center rounded-md border border-zinc-200 bg-zinc-50 text-zinc-700 transition hover:bg-white"
-            title="Next clip"
-          >
-            <SkipForward className="h-4 w-4" aria-hidden="true" />
-          </button>
-        </div>
+    <div className="flex flex-none flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-1.5">
+      <button
+        type="button"
+        onClick={onJumpPrevious}
+        title="Previous clip"
+        className="inline-flex h-7 w-7 items-center justify-center rounded border border-neutral-700 bg-neutral-800 text-neutral-300 transition hover:bg-neutral-700"
+      >
+        <SkipBack className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        onClick={onTogglePlay}
+        title="Play/pause (Space)"
+        className="inline-flex h-7 items-center gap-1 rounded bg-blue-700 px-2.5 text-xs font-semibold text-white transition hover:bg-blue-600"
+      >
+        {isPlaying ? (
+          <Pause className="h-3.5 w-3.5" aria-hidden="true" />
+        ) : (
+          <Play className="h-3.5 w-3.5" aria-hidden="true" />
+        )}
+        {isPlaying ? "Pause" : "Play"}
+      </button>
+      <button
+        type="button"
+        onClick={onStop}
+        className="inline-flex h-7 items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-2 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-700"
+      >
+        <Square className="h-3 w-3" aria-hidden="true" />
+        Stop
+      </button>
+      <button
+        type="button"
+        onClick={onJumpNext}
+        title="Next clip"
+        className="inline-flex h-7 w-7 items-center justify-center rounded border border-neutral-700 bg-neutral-800 text-neutral-300 transition hover:bg-neutral-700"
+      >
+        <SkipForward className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
 
-        <label className="grid gap-1 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-          Playback Cursor
-          <input
-            type="range"
-            min={0}
-            max={Math.max(1, totalDuration)}
-            step={0.1}
-            value={playheadTime}
-            onChange={(event) => onSeek(Number(event.target.value))}
-            className="w-full accent-zinc-950"
-          />
-        </label>
+      <input
+        type="range"
+        min={0}
+        max={Math.max(1, totalDuration)}
+        step={0.1}
+        value={playheadTime}
+        onChange={(event) => onSeek(Number(event.target.value))}
+        className="mx-2 min-w-0 flex-1 accent-blue-600"
+      />
 
-        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-          <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-sm font-semibold tabular-nums text-zinc-800">
-            {formatTime(playheadTime)} / {formatTime(totalDuration)}
-          </span>
-          <button
-            type="button"
-            onClick={onScrollToCursor}
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-3 text-sm font-semibold text-zinc-700 transition hover:bg-white"
-          >
-            <LocateFixed className="h-4 w-4" aria-hidden="true" />
-            Scroll
-          </button>
-          <button
-            type="button"
-            onClick={onToggleFollow}
-            className={`inline-flex h-9 items-center rounded-md border px-3 text-sm font-semibold transition ${
-              followPlayhead
-                ? "border-zinc-950 bg-zinc-950 text-white"
-                : "border-zinc-200 bg-zinc-50 text-zinc-700 hover:bg-white"
-            }`}
-          >
-            Follow
-          </button>
-        </div>
-      </div>
+      <span className="rounded border border-neutral-700 bg-neutral-800 px-2 py-0.5 text-[11px] font-semibold tabular-nums text-neutral-200">
+        {formatTime(playheadTime)} / {formatTime(totalDuration)}
+      </span>
+      <button
+        type="button"
+        onClick={onScrollToCursor}
+        title="Scroll to cursor"
+        className="inline-flex h-7 items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-2 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-700"
+      >
+        <LocateFixed className="h-3 w-3" aria-hidden="true" />
+        Scroll
+      </button>
+      <button
+        type="button"
+        onClick={onToggleFollow}
+        className={`inline-flex h-7 items-center rounded border px-2 text-xs font-semibold transition ${
+          followPlayhead
+            ? "border-blue-500 bg-blue-700 text-white"
+            : "border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700"
+        }`}
+      >
+        Follow
+      </button>
+      <span className="hidden rounded border border-neutral-700 bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-500 sm:inline-flex">
+        Space
+      </span>
     </div>
   );
 }
@@ -518,11 +541,13 @@ function PreviewPane({
   clipNotes,
   isPlaying,
   playheadTime,
+  onQuickAction,
 }: {
   clip?: TimelineClip;
   clipNotes: Note[];
   isPlaying: boolean;
   playheadTime: number;
+  onQuickAction: (action: QuickAction) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const thumbnail = mediaUrl(clip?.asset?.metadata.thumbnailPath);
@@ -548,125 +573,108 @@ function PreviewPane({
 
   if (!clip) {
     return (
-      <div className="grid min-h-[360px] place-items-center rounded-lg border border-zinc-200 bg-white text-sm text-zinc-500">
+      <div className="grid h-full min-h-[240px] place-items-center text-xs text-neutral-600">
         No timeline clips found.
       </div>
     );
   }
 
+  const badgeCls = roleBadge[clip.role] ?? "bg-neutral-700 text-neutral-300";
+
   return (
-    <div className="min-w-0 rounded-lg border border-zinc-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-zinc-200 px-4 py-3">
-        <div>
-          <h2 className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-zinc-500">
-            <Play className="h-4 w-4" aria-hidden="true" />
-            Preview
-          </h2>
-          <p className="mt-1 text-sm text-zinc-600">
-            {clipName(clip)} in {clip.section}
-          </p>
-        </div>
-        <span className="rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-semibold uppercase tracking-wide text-zinc-600">
-          {humanize(clip.role)}
-        </span>
+    <div className="flex h-full flex-col gap-3 p-4">
+      <div className="aspect-video w-full overflow-hidden rounded border border-neutral-800 bg-black">
+        {canPreviewVideo ? (
+          <video
+            ref={videoRef}
+            key={clip.id}
+            className="h-full w-full object-contain"
+            controls
+            poster={thumbnail}
+            preload="metadata"
+            src={source}
+          />
+        ) : thumbnail ? (
+          <div
+            className="h-full w-full bg-contain bg-center bg-no-repeat"
+            style={{ backgroundImage: `url(${thumbnail})` }}
+          />
+        ) : (
+          <div className="grid h-full place-items-center px-3 text-center text-[10px] uppercase tracking-widest text-neutral-600">
+            {clip.textOverlay ?? clip.asset?.originalId ?? "No preview"}
+          </div>
+        )}
       </div>
 
-      <div className="grid gap-4 p-4">
-        <div className="overflow-hidden rounded-lg border border-zinc-800 bg-zinc-950">
-          <div className="h-[220px] bg-black sm:h-[260px]">
-            {canPreviewVideo ? (
-              <video
-                ref={videoRef}
-                key={clip.id}
-                className="h-full w-full object-contain"
-                controls
-                poster={thumbnail}
-                preload="metadata"
-                src={source}
-              />
-            ) : thumbnail ? (
-              <div
-                className="h-full w-full bg-contain bg-center bg-no-repeat"
-                style={{ backgroundImage: `url(${thumbnail})` }}
-              />
-            ) : (
-              <div className="grid h-full place-items-center px-6 text-center text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                {clip.textOverlay ?? "No preview media"}
-              </div>
-            )}
-          </div>
+      <div className="space-y-1.5">
+        <div className="flex items-start gap-2">
+          <h2 className="flex-1 text-sm font-semibold leading-snug text-neutral-100">
+            {clipName(clip)}
+          </h2>
+          <span className={`flex-none rounded px-1.5 py-0.5 text-[10px] ${badgeCls}`}>
+            {humanize(clip.role)}
+          </span>
         </div>
 
-        <dl className="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <Info label="Timeline" value={`${formatTime(clip.timelineStart)}-${formatTime(clip.timelineEnd)}`} />
-          <Info label="Source Range" value={`${formatTime(clip.sourceIn)}-${formatTime(clip.sourceOut)}`} />
-          <Info label="Duration" value={`${clip.duration}s`} />
-          <Info label="Status" value={clip.asset?.status ?? "unknown"} />
-        </dl>
-
-        <div className="grid gap-3 lg:grid-cols-[1fr_220px]">
-          <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-            <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              <FileVideo className="h-3.5 w-3.5" aria-hidden="true" />
-              Source
-            </div>
-            <p className="break-words text-sm font-medium leading-6 text-zinc-800">
-              {sourceName(clip)}
-            </p>
-            {clip.textOverlay ? (
-              <p className="mt-2 text-sm leading-6 text-zinc-600">
-                Overlay: {clip.textOverlay}
-              </p>
-            ) : null}
-          </div>
-
-          <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3">
-            <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
-              Note Count
-            </div>
-            <p className="text-2xl font-semibold text-zinc-950">{clipNotes.length}</p>
-          </div>
-        </div>
+        <table className="w-full border-collapse text-xs text-neutral-400">
+          <tbody>
+            <Row label="Source" value={sourceName(clip)} />
+            <Row label="Section" value={clip.section} />
+            <Row label="Timeline" value={`${formatTime(clip.timelineStart)} → ${formatTime(clip.timelineEnd)}`} mono />
+            <Row label="Source Range" value={`${formatTime(clip.sourceIn)} → ${formatTime(clip.sourceOut)}`} mono />
+            <Row label="Duration" value={`${clip.duration}s`} mono />
+            <Row label="Status" value={humanize(clip.asset?.status ?? "unknown")} />
+            <Row label="Notes" value={String(clipNotes.length)} mono />
+          </tbody>
+        </table>
 
         {clip.notes ? (
-          <div className="rounded-md border border-zinc-200 bg-white p-3">
-            <div className="mb-1 flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              <MessageSquareText className="h-3.5 w-3.5" aria-hidden="true" />
-              Assembly Note
-            </div>
-            <p className="text-sm leading-6 text-zinc-700">{clip.notes}</p>
-          </div>
+          <p className="border-t border-neutral-800 pt-2 text-xs leading-relaxed text-neutral-500">
+            {clip.notes}
+          </p>
         ) : null}
+      </div>
 
-        {clipNotes.length > 0 ? (
-          <div className="rounded-md border border-zinc-200 bg-white">
-            <div className="border-b border-zinc-200 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Notes On This Clip
-            </div>
-            <div className="divide-y divide-zinc-200">
-              {clipNotes.slice(0, 3).map((note) => (
-                <p key={note.id} className="px-3 py-2 text-sm leading-6 text-zinc-700">
-                  {note.body}
-                </p>
-              ))}
-            </div>
-          </div>
-        ) : null}
+      <div>
+        <p className="mb-2 text-[10px] uppercase tracking-widest text-neutral-600">
+          Quick Actions
+        </p>
+        <div className="grid grid-cols-2 gap-1.5">
+          {quickActions.map((action) => {
+            const Icon = action.icon;
+            return (
+              <button
+                key={action.label}
+                type="button"
+                onClick={() => onQuickAction(action)}
+                className="inline-flex items-center gap-1.5 rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-left text-xs text-neutral-300 transition hover:bg-neutral-700"
+              >
+                <Icon className="h-3 w-3" aria-hidden="true" />
+                {action.label}
+              </button>
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+function Row({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: string;
+  mono?: boolean;
+}) {
   return (
-    <div className="min-w-0 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
-      <dt className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-        {label}
-      </dt>
-      <dd className="mt-1 truncate text-sm font-medium capitalize text-zinc-800" title={value}>
+    <tr className="border-b border-neutral-800/50">
+      <td className="whitespace-nowrap py-0.5 pr-2 text-neutral-600">{label}</td>
+      <td className={`py-0.5 text-neutral-300 ${mono ? "tabular-nums" : ""}`}>
         {value}
-      </dd>
-    </div>
+      </td>
+    </tr>
   );
 }
