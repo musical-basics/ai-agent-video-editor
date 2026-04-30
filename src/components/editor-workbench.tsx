@@ -1,6 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
+import { useRouter } from "next/navigation";
 import {
   ArrowDownToLine,
   ArrowUpToLine,
@@ -170,6 +179,8 @@ export function EditorWorkbench({
   renderJobs: RenderJob[];
   notes: Note[];
 }) {
+  const router = useRouter();
+  const noteFormRef = useRef<HTMLFormElement>(null);
   const reviewablePasses = useMemo(() => {
     const passIdsWithTimeline = new Set(timelineClips.map((clip) => clip.passId).filter(Boolean));
     return passes.filter((pass) => passIdsWithTimeline.has(pass.id));
@@ -182,6 +193,7 @@ export function EditorWorkbench({
   const [selectedPassId, setSelectedPassId] = useState(defaultPassId);
   const [noteType, setNoteType] = useState<NoteType>("clip_review");
   const [draft, setDraft] = useState("");
+  const [isSubmittingNote, setIsSubmittingNote] = useState(false);
   const [playheadTime, setPlayheadTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [followPlayhead, setFollowPlayhead] = useState(true);
@@ -268,6 +280,40 @@ export function EditorWorkbench({
     if (!selectedClip) return;
     setNoteType(action.noteType);
     setDraft(action.body(selectedClip));
+  }
+
+  async function handleNoteSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (isSubmittingNote) return;
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const body = String(formData.get("body") ?? "").trim();
+
+    if (!body) return;
+
+    formData.set("body", body);
+    setIsSubmittingNote(true);
+
+    try {
+      const result = await createNote(formData);
+      if (result?.ok) {
+        setDraft("");
+        form.reset();
+        router.refresh();
+      }
+    } finally {
+      setIsSubmittingNote(false);
+    }
+  }
+
+  function handleNoteKeyDown(event: ReactKeyboardEvent<HTMLTextAreaElement>) {
+    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) {
+      return;
+    }
+
+    event.preventDefault();
+    noteFormRef.current?.requestSubmit();
   }
 
   function changeSelectedPass(nextPassId: string) {
@@ -375,7 +421,11 @@ export function EditorWorkbench({
         </div>
 
         <div id="note-form" className="flex min-w-0 flex-1 flex-col">
-          <form action={createNote} className="flex flex-col gap-2 border-b border-neutral-800 p-4">
+          <form
+            ref={noteFormRef}
+            onSubmit={handleNoteSubmit}
+            className="flex flex-col gap-2 border-b border-neutral-800 p-4"
+          >
             <p className="text-[10px] uppercase tracking-widest text-neutral-600">
               Add Note
             </p>
@@ -446,15 +496,17 @@ export function EditorWorkbench({
                 required
                 value={draft}
                 onChange={(event) => setDraft(event.target.value)}
+                onKeyDown={handleNoteKeyDown}
                 placeholder="Note body…"
                 className="flex-1 resize-y rounded border border-neutral-700 bg-neutral-800 px-2 py-1.5 text-xs text-neutral-300 placeholder:text-neutral-600 outline-none focus:border-blue-600"
               />
               <button
                 type="submit"
-                className="inline-flex h-fit items-center gap-1 self-end rounded bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-600"
+                disabled={isSubmittingNote || !draft.trim()}
+                className="inline-flex h-fit items-center gap-1 self-end rounded bg-blue-700 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:bg-neutral-700 disabled:text-neutral-400"
               >
                 <Save className="h-3 w-3" aria-hidden="true" />
-                Add
+                {isSubmittingNote ? "Saving" : "Add"}
               </button>
             </div>
           </form>

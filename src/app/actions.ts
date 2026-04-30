@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { addNote } from "@/lib/db";
 
 function numberFromForm(value: FormDataEntryValue | null) {
+  if (value === null || String(value).trim() === "") return undefined;
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : undefined;
 }
@@ -16,7 +17,9 @@ export async function createNote(formData: FormData) {
   const noteType = String(formData.get("noteType") ?? "general");
   const author = String(formData.get("author") ?? "user") === "ai" ? "ai" : "user";
 
-  if (!projectId || !body) return;
+  if (!projectId || !body) {
+    return { ok: false };
+  }
 
   addNote({
     projectId,
@@ -31,4 +34,5 @@ export async function createNote(formData: FormData) {
   });
 
   revalidatePath("/");
+  return { ok: true };
 }
