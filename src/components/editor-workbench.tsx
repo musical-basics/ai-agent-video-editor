@@ -190,7 +190,8 @@ export function EditorWorkbench({
     reviewablePasses.at(-1)?.id ??
     passes.at(-1)?.id ??
     "";
-  const [selectedPassId, setSelectedPassId] = useState(defaultPassId);
+  const [selectedPassOverride, setSelectedPassOverride] = useState<string>();
+  const selectedPassId = selectedPassOverride ?? defaultPassId;
   const [noteType, setNoteType] = useState<NoteType>("clip_review");
   const [draft, setDraft] = useState("");
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
@@ -228,6 +229,16 @@ export function EditorWorkbench({
   const selectedClipIndex = selectedClip
     ? visibleTimelineClips.findIndex((clip) => clip.id === selectedClip.id)
     : -1;
+
+  useEffect(() => {
+    const refreshTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        router.refresh();
+      }
+    }, 5000);
+
+    return () => window.clearInterval(refreshTimer);
+  }, [router]);
 
   useEffect(() => {
     if (!isPlaying || totalDuration <= 0) return;
@@ -317,7 +328,7 @@ export function EditorWorkbench({
   }
 
   function changeSelectedPass(nextPassId: string) {
-    setSelectedPassId(nextPassId);
+    setSelectedPassOverride(nextPassId);
     setPlayheadTime(0);
     setIsPlaying(false);
     setScrollSignal((value) => value + 1);

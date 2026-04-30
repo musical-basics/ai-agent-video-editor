@@ -95,6 +95,7 @@ export default function Home() {
         </header>
 
         <EditorWorkbench
+          key={project.metadata.currentPassId ?? latestTimelinePass?.id ?? project.id}
           project={project}
           passes={passes}
           timelineClips={timelineClips}
