@@ -7,6 +7,8 @@ import type { Note, TimelineClip, TimelineRole } from "@/lib/types";
 const pxPerSecond = 7;
 const laneOrder: Array<{ role: TimelineRole; label: string }> = [
   { role: "title_card", label: "title" },
+  { role: "voiceover", label: "voiceover" },
+  { role: "music", label: "music" },
   { role: "a_roll", label: "a-roll" },
   { role: "b_roll", label: "b-roll" },
   { role: "ambient", label: "ambient" },
@@ -19,6 +21,8 @@ const clipBase: Record<TimelineRole, string> = {
   b_roll: "bg-teal-800 border-teal-600 text-teal-50",
   ambient: "bg-neutral-700 border-neutral-500 text-neutral-100",
   title_card: "bg-purple-800 border-purple-600 text-purple-50",
+  voiceover: "bg-rose-800 border-rose-500 text-rose-50",
+  music: "bg-lime-900 border-lime-600 text-lime-50",
   still: "bg-amber-800 border-amber-600 text-amber-50",
   placeholder:
     "bg-neutral-800 border-dashed border-neutral-600 text-neutral-300",
@@ -29,6 +33,8 @@ const clipSelected: Record<TimelineRole, string> = {
   b_roll: "bg-teal-600 border-teal-400 ring-2 ring-teal-400",
   ambient: "bg-neutral-500 border-neutral-300 ring-2 ring-neutral-300",
   title_card: "bg-purple-600 border-purple-400 ring-2 ring-purple-400",
+  voiceover: "bg-rose-600 border-rose-300 ring-2 ring-rose-300",
+  music: "bg-lime-700 border-lime-400 ring-2 ring-lime-400",
   still: "bg-amber-600 border-amber-400 ring-2 ring-amber-400",
   placeholder: "bg-neutral-600 border-neutral-400 ring-2 ring-neutral-400",
 };
@@ -38,6 +44,8 @@ const legendSwatch: Record<TimelineRole, string> = {
   b_roll: "bg-teal-800 border-teal-600",
   ambient: "bg-neutral-700 border-neutral-500",
   title_card: "bg-purple-800 border-purple-600",
+  voiceover: "bg-rose-800 border-rose-500",
+  music: "bg-lime-900 border-lime-600",
   still: "bg-amber-800 border-amber-600",
   placeholder: "bg-neutral-800 border-dashed border-neutral-600",
 };
@@ -218,6 +226,7 @@ export function TimelinePanel({
                   />
                   {laneClips.map((clip) => {
                     const thumbnail = mediaUrl(clip.asset?.metadata.thumbnailPath);
+                    const isAudioClip = clip.role === "voiceover" || clip.role === "music";
                     const rotation = clipRotation(clip);
                     const width = Math.max(48, clip.duration * pxPerSecond - 2);
                     const notesForClip = noteCounts.get(clip.id) ?? 0;
@@ -252,6 +261,18 @@ export function TimelinePanel({
                               className="absolute left-1/2 top-1/2 bg-cover bg-center"
                               style={rotatedThumbnailStyle(rotation, thumbnail)}
                             />
+                          ) : isAudioClip ? (
+                            <div className="flex h-full items-center gap-px px-1">
+                              {Array.from({ length: 18 }, (_, index) => (
+                                <span
+                                  key={index}
+                                  className="w-0.5 rounded-full bg-white/45"
+                                  style={{
+                                    height: `${25 + ((index * 17) % 55)}%`,
+                                  }}
+                                />
+                              ))}
+                            </div>
                           ) : null}
                         </div>
                         {notesForClip > 0 ? (

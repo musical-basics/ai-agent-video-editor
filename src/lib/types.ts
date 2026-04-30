@@ -6,6 +6,7 @@ export type AssetKind =
   | "transcript"
   | "contact_sheet"
   | "render"
+  | "audio"
   | "placeholder";
 
 export type AssetStatus = "active" | "placeholder" | "skip" | "missing";
@@ -33,7 +34,9 @@ export type TimelineRole =
   | "ambient"
   | "title_card"
   | "placeholder"
-  | "still";
+  | "still"
+  | "voiceover"
+  | "music";
 
 export type RenderStatus = "queued" | "running" | "done" | "failed";
 
@@ -111,6 +114,7 @@ export type TimelineItem = {
   passId?: string;
   section: string;
   order: number;
+  timelineStart?: number;
   sourceIn?: number;
   sourceOut?: number;
   targetDuration?: number;

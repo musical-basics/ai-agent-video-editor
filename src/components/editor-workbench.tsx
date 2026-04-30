@@ -66,6 +66,8 @@ const roleBadge: Record<string, string> = {
   b_roll: "bg-teal-800 text-teal-100",
   ambient: "bg-neutral-700 text-neutral-200",
   title_card: "bg-purple-800 text-purple-100",
+  voiceover: "bg-rose-800 text-rose-100",
+  music: "bg-lime-900 text-lime-100",
   still: "bg-amber-800 text-amber-100",
   placeholder: "bg-neutral-800 text-neutral-400",
 };
@@ -765,9 +767,11 @@ function PreviewPane({
   onQuickAction: (action: QuickAction) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const audioRef = useRef<HTMLAudioElement>(null);
   const thumbnail = mediaUrl(clip?.asset?.metadata.thumbnailPath);
   const source = mediaUrl(clip?.asset?.metadata.relativePath);
   const canPreviewVideo = clip?.asset?.kind === "video" && source;
+  const canPreviewAudio = clip?.asset?.kind === "audio" && source;
   const clipOffset = clip ? clamp(playheadTime - clip.timelineStart, 0, clip.duration) : 0;
   const sourceTime = (clip?.sourceIn ?? 0) + clipOffset;
   const rotation = clipRotation(clip);
@@ -786,6 +790,21 @@ function PreviewPane({
       video.pause();
     }
   }, [canPreviewVideo, clip?.id, isPlaying, sourceTime]);
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !canPreviewAudio) return;
+
+    if (Number.isFinite(sourceTime) && Math.abs(audio.currentTime - sourceTime) > 0.75) {
+      audio.currentTime = sourceTime;
+    }
+
+    if (isPlaying) {
+      void audio.play().catch(() => undefined);
+    } else {
+      audio.pause();
+    }
+  }, [canPreviewAudio, clip?.id, isPlaying, sourceTime]);
 
   if (!clip) {
     return (
@@ -811,6 +830,33 @@ function PreviewPane({
             src={source}
             style={rotatedMediaStyle(rotation)}
           />
+        ) : canPreviewAudio ? (
+          <div className="grid h-full place-items-center px-4 text-center">
+            <div className="w-full space-y-3">
+              <div className="mx-auto flex h-16 max-w-xs items-center justify-center gap-1 rounded border border-neutral-800 bg-neutral-900 px-3">
+                {Array.from({ length: 28 }, (_, index) => (
+                  <span
+                    key={index}
+                    className="w-1 rounded-full bg-white/45"
+                    style={{
+                      height: `${24 + ((index * 19) % 58)}%`,
+                    }}
+                  />
+                ))}
+              </div>
+              <p className="text-[10px] uppercase tracking-widest text-neutral-500">
+                Audio Clip
+              </p>
+              <audio
+                ref={audioRef}
+                key={clip.id}
+                controls
+                preload="metadata"
+                src={source}
+                className="w-full"
+              />
+            </div>
+          </div>
         ) : thumbnail ? (
           <div
             className="absolute left-1/2 top-1/2 bg-contain bg-center bg-no-repeat"

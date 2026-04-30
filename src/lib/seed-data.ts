@@ -60,6 +60,13 @@ export const sourceRelativePaths: Record<string, string> = {
     "08_Pickups_To_Record/056_PICKUP_hand_key_comparison.MOV",
   "technical-keyboard-stills":
     "04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG",
+  "VO_01_late_night_drive.wav": "voiceovers/VO_01_late_night_drive.wav",
+  "VO_02_gas_station_and_snacks.wav": "voiceovers/VO_02_gas_station_and_snacks.wav",
+  "VO_03_car_nap.wav": "voiceovers/VO_03_car_nap.wav",
+  "VO_04_pennsylvania_road.wav": "voiceovers/VO_04_pennsylvania_road.wav",
+  "VO_05_lake_pause.wav": "voiceovers/VO_05_lake_pause.wav",
+  "VO_06_breakdown_and_return.wav": "voiceovers/VO_06_breakdown_and_return.wav",
+  "pass8_travel_bed.wav": "music/pass8_travel_bed.wav",
 };
 
 export type SeedTimelineItem = {
@@ -68,6 +75,7 @@ export type SeedTimelineItem = {
   section: string;
   targetDuration: number;
   role: TimelineRole;
+  timelineStart?: number;
   sourceIn?: number;
   sourceOut?: number;
   rotationOverride?: 0 | 90 | 180 | 270;
@@ -1274,3 +1282,165 @@ export const pass8TimelineSeed: SeedTimelineItem[] = pass7TimelineSeed.map((item
   id: item.id.replace(/^p7-/, "p8-"),
   notes: item.notes.replace(/^V4:/, "V5 / Pass 8:"),
 }));
+
+const pass8VoiceoverTimelineSeed: SeedTimelineItem[] = [
+  {
+    id: "p8-audio-vo-01-late-night-drive",
+    source: "VO_01_late_night_drive.wav",
+    section: "VO 01 Late-Night Drive",
+    timelineStart: 55,
+    targetDuration: 23,
+    role: "voiceover",
+    sourceIn: 0,
+    sourceOut: 22.15,
+    notes: "Pass 8: narration over late-night drive/keyboard b-roll.",
+  },
+  {
+    id: "p8-audio-vo-02-gas-station-and-snacks",
+    source: "VO_02_gas_station_and_snacks.wav",
+    section: "VO 02 Gas Station",
+    timelineStart: 94,
+    targetDuration: 17,
+    role: "voiceover",
+    sourceIn: 0,
+    sourceOut: 17.23,
+    notes: "Pass 8: narration over gas station/snack montage.",
+  },
+  {
+    id: "p8-audio-vo-03-car-nap",
+    source: "VO_03_car_nap.wav",
+    section: "VO 03 Car Nap",
+    timelineStart: 137,
+    targetDuration: 14,
+    role: "voiceover",
+    sourceIn: 0,
+    sourceOut: 13.28,
+    notes: "Pass 8: narration over car-nap recovery montage.",
+  },
+  {
+    id: "p8-audio-vo-04-pennsylvania-road",
+    source: "VO_04_pennsylvania_road.wav",
+    section: "VO 04 Pennsylvania Road",
+    timelineStart: 161,
+    targetDuration: 20,
+    role: "voiceover",
+    sourceIn: 0,
+    sourceOut: 20.57,
+    notes: "Pass 8: narration over Pennsylvania road montage.",
+  },
+  {
+    id: "p8-audio-vo-05-lake-pause",
+    source: "VO_05_lake_pause.wav",
+    section: "VO 05 Lake Pause",
+    timelineStart: 450,
+    targetDuration: 22,
+    role: "voiceover",
+    sourceIn: 0,
+    sourceOut: 11.89,
+    notes: "Pass 8: narration over lake pause and mileage montage.",
+  },
+  {
+    id: "p8-audio-vo-06-breakdown-and-return",
+    source: "VO_06_breakdown_and_return.wav",
+    section: "VO 06 Breakdown and Return",
+    timelineStart: 480,
+    targetDuration: 26,
+    role: "voiceover",
+    sourceIn: 0,
+    sourceOut: 17.32,
+    notes: "Pass 8: narration over breakdown/return-home montage.",
+  },
+];
+
+const pass8MusicTimelineSeed: SeedTimelineItem[] = [
+  {
+    id: "p8-audio-music-p056-cold-flash",
+    source: "pass8_travel_bed.wav",
+    section: "Cold Open",
+    timelineStart: 24,
+    targetDuration: 3,
+    role: "music",
+    sourceIn: 0,
+    sourceOut: 3,
+    notes: "Pass 8: low music under P056 placeholder card.",
+  },
+  {
+    id: "p8-audio-music-cold-title",
+    source: "pass8_travel_bed.wav",
+    section: "Cold Open",
+    timelineStart: 27,
+    targetDuration: 5,
+    role: "music",
+    sourceIn: 0,
+    sourceOut: 5,
+    notes: "Pass 8: low music under cold-open title card.",
+  },
+  {
+    id: "p8-audio-music-vo-01",
+    source: "pass8_travel_bed.wav",
+    section: "VO 01 Late-Night Drive",
+    timelineStart: 55,
+    targetDuration: 23,
+    role: "music",
+    sourceIn: 0,
+    sourceOut: 23,
+    notes: "Pass 8: low music bed ducked under VO 01.",
+  },
+  {
+    id: "p8-audio-music-vo-02",
+    source: "pass8_travel_bed.wav",
+    section: "VO 02 Gas Station",
+    timelineStart: 94,
+    targetDuration: 17,
+    role: "music",
+    sourceIn: 0,
+    sourceOut: 17,
+    notes: "Pass 8: low music bed ducked under VO 02.",
+  },
+  {
+    id: "p8-audio-music-vo-03",
+    source: "pass8_travel_bed.wav",
+    section: "VO 03 Car Nap",
+    timelineStart: 137,
+    targetDuration: 14,
+    role: "music",
+    sourceIn: 0,
+    sourceOut: 14,
+    notes: "Pass 8: low music bed ducked under VO 03.",
+  },
+  {
+    id: "p8-audio-music-vo-04",
+    source: "pass8_travel_bed.wav",
+    section: "VO 04 Pennsylvania Road",
+    timelineStart: 161,
+    targetDuration: 20,
+    role: "music",
+    sourceIn: 0,
+    sourceOut: 20,
+    notes: "Pass 8: low music bed ducked under VO 04.",
+  },
+  {
+    id: "p8-audio-music-vo-05",
+    source: "pass8_travel_bed.wav",
+    section: "VO 05 Lake Pause",
+    timelineStart: 450,
+    targetDuration: 22,
+    role: "music",
+    sourceIn: 0,
+    sourceOut: 22,
+    notes: "Pass 8: low music bed ducked under VO 05.",
+  },
+  {
+    id: "p8-audio-music-vo-06",
+    source: "pass8_travel_bed.wav",
+    section: "VO 06 Breakdown and Return",
+    timelineStart: 480,
+    targetDuration: 26,
+    role: "music",
+    sourceIn: 0,
+    sourceOut: 26,
+    notes: "Pass 8: low music bed ducked under VO 06.",
+  },
+];
+
+pass8TimelineSeed.push(...pass8VoiceoverTimelineSeed, ...pass8MusicTimelineSeed);

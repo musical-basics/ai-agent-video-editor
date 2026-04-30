@@ -112,6 +112,7 @@ function migrate(database: Database.Database) {
       passId TEXT,
       section TEXT NOT NULL,
       "order" INTEGER NOT NULL,
+      timelineStart REAL,
       sourceIn REAL,
       sourceOut REAL,
       targetDuration REAL,
@@ -161,6 +162,13 @@ function migrate(database: Database.Database) {
       FOREIGN KEY (passId) REFERENCES passes(id)
     );
   `);
+
+  const timelineColumns = database.prepare("PRAGMA table_info(timeline_items)").all() as Array<{
+    name: string;
+  }>;
+  if (!timelineColumns.some((column) => column.name === "timelineStart")) {
+    database.exec("ALTER TABLE timeline_items ADD COLUMN timelineStart REAL");
+  }
 }
 
 function seed(database: Database.Database) {
@@ -321,10 +329,10 @@ function seedTimeline(
   );
   const insertTimelineItem = database.prepare(
     `INSERT INTO timeline_items (
-      id, projectId, assetId, passId, section, "order", sourceIn, sourceOut,
+      id, projectId, assetId, passId, section, "order", timelineStart, sourceIn, sourceOut,
       targetDuration, role, enabled, rotationOverride, textOverlay, notes
     ) VALUES (
-      @id, @projectId, @assetId, @passId, @section, @order, @sourceIn, @sourceOut,
+      @id, @projectId, @assetId, @passId, @section, @order, @timelineStart, @sourceIn, @sourceOut,
       @targetDuration, @role, @enabled, @rotationOverride, @textOverlay, @notes
     )
     ON CONFLICT(id) DO UPDATE SET
@@ -332,6 +340,7 @@ function seedTimeline(
       passId = excluded.passId,
       section = excluded.section,
       "order" = excluded."order",
+      timelineStart = excluded.timelineStart,
       sourceIn = excluded.sourceIn,
       sourceOut = excluded.sourceOut,
       targetDuration = excluded.targetDuration,
@@ -362,7 +371,7 @@ function seedTimeline(
       width: null,
       height: null,
       rotation: 0,
-      hasAudio: kind === "video" ? 1 : 0,
+      hasAudio: kind === "video" || kind === "audio" ? 1 : 0,
       status,
       metadata: JSON.stringify({
         source: item.source,
@@ -379,6 +388,7 @@ function seedTimeline(
       passId,
       section: item.section,
       order,
+      timelineStart: item.timelineStart ?? null,
       sourceIn: item.sourceIn ?? null,
       sourceOut: item.sourceOut ?? null,
       targetDuration: item.targetDuration,
@@ -545,6 +555,14 @@ function assetKindForSource(source: string) {
     return "video";
   }
   if (
+    lower.endsWith(".wav") ||
+    lower.endsWith(".mp3") ||
+    lower.endsWith(".m4a") ||
+    lower.endsWith(".aac")
+  ) {
+    return "audio";
+  }
+  if (
     lower.endsWith(".jpg") ||
     lower.endsWith(".jpeg") ||
     lower.endsWith(".png") ||
@@ -614,6 +632,7 @@ export function getTimelineItems(projectId: string, passId?: string): TimelineIt
     ...row,
     assetId: row.assetId ?? undefined,
     passId: row.passId ?? undefined,
+    timelineStart: row.timelineStart ?? undefined,
     sourceIn: row.sourceIn ?? undefined,
     sourceOut: row.sourceOut ?? undefined,
     targetDuration: row.targetDuration ?? undefined,
@@ -634,14 +653,17 @@ export function getTimelineClips(projectId: string, passId?: string): TimelineCl
     const duration = item.targetDuration ?? Math.max(1, (item.sourceOut ?? 0) - (item.sourceIn ?? 0));
     const passKey = item.passId ?? "unassigned";
     const cursor = cursorsByPass.get(passKey) ?? 0;
+    const timelineStart = item.timelineStart ?? cursor;
     const clip: TimelineClip = {
       ...item,
       asset: item.assetId ? assetsById.get(item.assetId) : undefined,
-      timelineStart: cursor,
-      timelineEnd: cursor + duration,
+      timelineStart,
+      timelineEnd: timelineStart + duration,
       duration,
     };
-    cursorsByPass.set(passKey, cursor + duration);
+    if (item.timelineStart === undefined) {
+      cursorsByPass.set(passKey, cursor + duration);
+    }
     return clip;
   });
 }
