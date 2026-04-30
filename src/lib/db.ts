@@ -2,14 +2,22 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import type { Note, Pass, Project } from "./types";
+import { pianoProjectRoot, sourceRelativePaths, timelineSeed } from "./seed-data";
+import type { Asset, Note, Pass, Project, TimelineClip, TimelineItem } from "./types";
 
-const dataDir = path.join(process.cwd(), ".cut-notes");
+const dataDir = path.join(/*turbopackIgnore: true*/ process.cwd(), ".cut-notes");
 const dbPath = path.join(dataDir, "cut-notes.sqlite");
 
 type DbProjectRow = Omit<Project, "metadata"> & { metadata: string };
+type DbAssetRow = Omit<Asset, "metadata" | "hasAudio"> & {
+  metadata: string;
+  hasAudio: number | null;
+};
 type DbPassRow = Pass;
 type DbNoteRow = Omit<Note, "metadata"> & { metadata: string };
+type DbTimelineItemRow = Omit<TimelineItem, "enabled"> & {
+  enabled: number;
+};
 
 let db: Database.Database | undefined;
 
@@ -140,35 +148,34 @@ function migrate(database: Database.Database) {
 }
 
 function seed(database: Database.Database) {
-  const count = database.prepare("SELECT COUNT(*) as count FROM projects").get() as {
-    count: number;
-  };
-
-  if (count.count > 0) return;
-
   const timestamp = now();
   const projectId = "piano-hand-size-part-2";
+  const projectCount = database
+    .prepare("SELECT COUNT(*) as count FROM projects WHERE id = ?")
+    .get(projectId) as { count: number };
 
-  database
-    .prepare(
-      `INSERT INTO projects (id, name, rootPath, status, createdAt, updatedAt, metadata)
-       VALUES (@id, @name, @rootPath, @status, @createdAt, @updatedAt, @metadata)`,
-    )
-    .run({
-      id: projectId,
-      name: "Piano Hand Size Part 2",
-      rootPath: "/Users/lionelyu/Music/Piano Hand Size Part 2",
-      status: "active",
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      metadata: JSON.stringify({
-        thesis:
-          "I drove overnight to pick up rare DS 6.0 and DS 5.5 piano keyboards because hand size changes the way you experience the piano.",
-        targetRuntime: "11:30-12:30",
-        currentPass: "Pass 5: Rough Review Cut",
-        githubRepo: "https://github.com/musical-basics/piano-hand-size-2-video",
-      }),
-    });
+  if (projectCount.count === 0) {
+    database
+      .prepare(
+        `INSERT INTO projects (id, name, rootPath, status, createdAt, updatedAt, metadata)
+         VALUES (@id, @name, @rootPath, @status, @createdAt, @updatedAt, @metadata)`,
+      )
+      .run({
+        id: projectId,
+        name: "Piano Hand Size Part 2",
+        rootPath: pianoProjectRoot,
+        status: "active",
+        createdAt: timestamp,
+        updatedAt: timestamp,
+        metadata: JSON.stringify({
+          thesis:
+            "I drove overnight to pick up rare DS 6.0 and DS 5.5 piano keyboards because hand size changes the way you experience the piano.",
+          targetRuntime: "11:30-12:30",
+          currentPass: "Pass 5: Rough Review Cut",
+          githubRepo: "https://github.com/musical-basics/piano-hand-size-2-video",
+        }),
+      });
+  }
 
   const passes = [
     ["pass-0-plan", "Pass 0: Plan", 0, "done", "Define thesis, structure, tone, and target length."],
@@ -180,7 +187,7 @@ function seed(database: Database.Database) {
   ] as const;
 
   const insertPass = database.prepare(
-    `INSERT INTO passes (id, projectId, name, "order", status, goal, startedAt, completedAt)
+    `INSERT OR IGNORE INTO passes (id, projectId, name, "order", status, goal, startedAt, completedAt)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
   );
 
@@ -188,8 +195,10 @@ function seed(database: Database.Database) {
     insertPass.run(id, projectId, name, order, status, goal, timestamp, status === "done" ? timestamp : null);
   }
 
+  seedTimeline(database, projectId, timestamp);
+
   const insertNote = database.prepare(
-    `INSERT INTO notes (
+    `INSERT OR IGNORE INTO notes (
       id, projectId, assetId, passId, timelineItemId, author, noteType, body,
       timecodeStart, timecodeEnd, status, createdAt, updatedAt, metadata
     ) VALUES (
@@ -237,6 +246,155 @@ function seed(database: Database.Database) {
   }
 }
 
+function seedTimeline(database: Database.Database, projectId: string, timestamp: string) {
+  const insertAsset = database.prepare(
+    `INSERT INTO assets (
+      id, projectId, kind, path, basename, originalId, sequence,
+      durationSeconds, width, height, rotation, hasAudio, status, metadata
+    ) VALUES (
+      @id, @projectId, @kind, @path, @basename, @originalId, @sequence,
+      @durationSeconds, @width, @height, @rotation, @hasAudio, @status, @metadata
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      kind = excluded.kind,
+      path = excluded.path,
+      basename = excluded.basename,
+      originalId = excluded.originalId,
+      sequence = excluded.sequence,
+      durationSeconds = excluded.durationSeconds,
+      width = excluded.width,
+      height = excluded.height,
+      rotation = excluded.rotation,
+      hasAudio = excluded.hasAudio,
+      status = excluded.status,
+      metadata = excluded.metadata`,
+  );
+  const insertTimelineItem = database.prepare(
+    `INSERT INTO timeline_items (
+      id, projectId, assetId, passId, section, "order", sourceIn, sourceOut,
+      targetDuration, role, enabled, rotationOverride, textOverlay, notes
+    ) VALUES (
+      @id, @projectId, @assetId, @passId, @section, @order, @sourceIn, @sourceOut,
+      @targetDuration, @role, @enabled, @rotationOverride, @textOverlay, @notes
+    )
+    ON CONFLICT(id) DO UPDATE SET
+      assetId = excluded.assetId,
+      passId = excluded.passId,
+      section = excluded.section,
+      "order" = excluded."order",
+      sourceIn = excluded.sourceIn,
+      sourceOut = excluded.sourceOut,
+      targetDuration = excluded.targetDuration,
+      role = excluded.role,
+      enabled = excluded.enabled,
+      rotationOverride = excluded.rotationOverride,
+      textOverlay = excluded.textOverlay,
+      notes = excluded.notes`,
+  );
+
+  for (const [order, item] of timelineSeed.entries()) {
+    const assetId = assetIdForSource(item.source);
+    const basename = basenameForSource(item.source);
+    const relativePath = relativePathForSource(item.source);
+    const thumbnailPath = thumbnailPathForSource(item.source);
+    const kind = assetKindForSource(item.source);
+    const status = item.role === "placeholder" ? "placeholder" : "active";
+
+    insertAsset.run({
+      id: assetId,
+      projectId,
+      kind,
+      path: relativePath ? path.join(pianoProjectRoot, relativePath) : pianoProjectRoot,
+      basename,
+      originalId: originalIdForSource(item.source),
+      sequence: sequenceForSource(item.source),
+      durationSeconds: null,
+      width: null,
+      height: null,
+      rotation: 0,
+      hasAudio: kind === "video" ? 1 : 0,
+      status,
+      metadata: JSON.stringify({
+        source: item.source,
+        thumbnailPath,
+        seededAt: timestamp,
+      }),
+    });
+
+    insertTimelineItem.run({
+      id: item.id,
+      projectId,
+      assetId,
+      passId: "pass-4-assembly",
+      section: item.section,
+      order,
+      sourceIn: item.sourceIn ?? null,
+      sourceOut: item.sourceOut ?? null,
+      targetDuration: item.targetDuration,
+      role: item.role,
+      enabled: 1,
+      rotationOverride: null,
+      textOverlay: item.textOverlay ?? null,
+      notes: item.notes,
+    });
+  }
+}
+
+function assetIdForSource(source: string) {
+  return `asset-${source
+    .replace(/\.[^.]+$/, "")
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase()}`;
+}
+
+function basenameForSource(source: string) {
+  if (source === "technical-keyboard-stills") return "technical_keyboard_stills";
+  if (source === "title-card-road-keyboard") return "cold_open_title_card";
+  return source;
+}
+
+function relativePathForSource(source: string) {
+  return sourceRelativePaths[source];
+}
+
+function thumbnailPathForSource(source: string) {
+  if (source === "technical-keyboard-stills") {
+    return "04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG";
+  }
+
+  if (source === "055_PICKUP_front_facing_intro.MOV") {
+    return "90_Reference_Frames/055_PICKUP_front_facing_intro.jpg";
+  }
+
+  const match = source.match(/IMG_(\d{4})/);
+  if (!match) return undefined;
+
+  return `90_Reference_Frames/IMG_${match[1]}.jpg`;
+}
+
+function originalIdForSource(source: string) {
+  const match = source.match(/IMG_(\d{4})/);
+  if (match) return `IMG_${match[1]}`;
+  if (source.includes("PICKUP")) return source.replace(/\.[^.]+$/, "");
+  return undefined;
+}
+
+function sequenceForSource(source: string) {
+  const match = source.match(/^(\d{3})_/);
+  return match ? Number(match[1]) : undefined;
+}
+
+function assetKindForSource(source: string) {
+  if (source === "technical-keyboard-stills") return "image";
+  if (source === "title-card-road-keyboard") return "placeholder";
+  if (source.endsWith(".MOV") || source.endsWith(".mov") || source.endsWith(".mp4")) {
+    return "video";
+  }
+
+  return "placeholder";
+}
+
 export function getActiveProject(): Project {
   const row = getDb()
     .prepare("SELECT * FROM projects WHERE status = 'active' ORDER BY createdAt LIMIT 1")
@@ -252,6 +410,62 @@ export function getPasses(projectId: string): Pass[] {
   return getDb()
     .prepare(`SELECT * FROM passes WHERE projectId = ? ORDER BY "order" ASC`)
     .all(projectId) as DbPassRow[];
+}
+
+export function getAssets(projectId: string): Asset[] {
+  const rows = getDb()
+    .prepare("SELECT * FROM assets WHERE projectId = ? ORDER BY sequence ASC, basename ASC")
+    .all(projectId) as DbAssetRow[];
+
+  return rows.map((row) => ({
+    ...row,
+    originalId: row.originalId ?? undefined,
+    sequence: row.sequence ?? undefined,
+    durationSeconds: row.durationSeconds ?? undefined,
+    width: row.width ?? undefined,
+    height: row.height ?? undefined,
+    hasAudio: row.hasAudio === null ? undefined : Boolean(row.hasAudio),
+    metadata: parseJson(row.metadata, {}),
+  }));
+}
+
+export function getTimelineItems(projectId: string): TimelineItem[] {
+  const rows = getDb()
+    .prepare(`SELECT * FROM timeline_items WHERE projectId = ? ORDER BY "order" ASC`)
+    .all(projectId) as DbTimelineItemRow[];
+
+  return rows.map((row) => ({
+    ...row,
+    assetId: row.assetId ?? undefined,
+    passId: row.passId ?? undefined,
+    sourceIn: row.sourceIn ?? undefined,
+    sourceOut: row.sourceOut ?? undefined,
+    targetDuration: row.targetDuration ?? undefined,
+    enabled: Boolean(row.enabled),
+    rotationOverride: row.rotationOverride ?? undefined,
+    textOverlay: row.textOverlay ?? undefined,
+    notes: row.notes ?? undefined,
+  }));
+}
+
+export function getTimelineClips(projectId: string): TimelineClip[] {
+  const assets = getAssets(projectId);
+  const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
+  const items = getTimelineItems(projectId);
+  let cursor = 0;
+
+  return items.map((item) => {
+    const duration = item.targetDuration ?? Math.max(1, (item.sourceOut ?? 0) - (item.sourceIn ?? 0));
+    const clip: TimelineClip = {
+      ...item,
+      asset: item.assetId ? assetsById.get(item.assetId) : undefined,
+      timelineStart: cursor,
+      timelineEnd: cursor + duration,
+      duration,
+    };
+    cursor += duration;
+    return clip;
+  });
 }
 
 export function getNotes(projectId: string): Note[] {
@@ -273,30 +487,43 @@ export function getNotes(projectId: string): Note[] {
 export function addNote(input: {
   projectId: string;
   passId?: string;
+  timelineItemId?: string;
   author: "user" | "ai";
   noteType: string;
   body: string;
+  timecodeStart?: number;
+  timecodeEnd?: number;
   status?: string;
 }) {
   const timestamp = now();
+  const database = getDb();
+  const timelineItem = input.timelineItemId
+    ? (database
+        .prepare("SELECT assetId FROM timeline_items WHERE id = ? AND projectId = ?")
+        .get(input.timelineItemId, input.projectId) as { assetId: string | null } | undefined)
+    : undefined;
 
-  getDb()
+  database
     .prepare(
       `INSERT INTO notes (
         id, projectId, assetId, passId, timelineItemId, author, noteType, body,
         timecodeStart, timecodeEnd, status, createdAt, updatedAt, metadata
       ) VALUES (
-        @id, @projectId, NULL, @passId, NULL, @author, @noteType, @body,
-        NULL, NULL, @status, @createdAt, @updatedAt, @metadata
+        @id, @projectId, @assetId, @passId, @timelineItemId, @author, @noteType, @body,
+        @timecodeStart, @timecodeEnd, @status, @createdAt, @updatedAt, @metadata
       )`,
     )
     .run({
       id: randomUUID(),
       projectId: input.projectId,
+      assetId: timelineItem?.assetId ?? null,
       passId: input.passId ?? null,
+      timelineItemId: input.timelineItemId ?? null,
       author: input.author,
       noteType: input.noteType,
       body: input.body,
+      timecodeStart: input.timecodeStart ?? null,
+      timecodeEnd: input.timecodeEnd ?? null,
       status: input.status ?? "open",
       createdAt: timestamp,
       updatedAt: timestamp,

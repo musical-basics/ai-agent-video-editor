@@ -15,7 +15,8 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { createNote } from "./actions";
-import { getActiveProject, getNotes, getPasses } from "@/lib/db";
+import { TimelinePanel } from "@/components/timeline-panel";
+import { getActiveProject, getNotes, getPasses, getTimelineClips } from "@/lib/db";
 import type { NoteType, PassStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -58,6 +59,7 @@ function humanize(value: string) {
 export default function Home() {
   const project = getActiveProject();
   const passes = getPasses(project.id);
+  const timelineClips = getTimelineClips(project.id);
   const notes = getNotes(project.id);
   const openNotes = notes.filter((note) =>
     ["open", "needs_review"].includes(note.status),
@@ -65,6 +67,7 @@ export default function Home() {
   const aiLogs = notes.filter((note) => note.author === "ai");
   const userNotes = notes.filter((note) => note.author === "user");
   const passById = new Map(passes.map((pass) => [pass.id, pass]));
+  const clipById = new Map(timelineClips.map((clip) => [clip.id, clip]));
 
   return (
     <main className="min-h-screen bg-zinc-100 text-zinc-950">
@@ -91,15 +94,18 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-2 sm:w-[420px]">
+          <div className="grid grid-cols-2 gap-2 sm:w-[520px] sm:grid-cols-4">
             <Metric label="Passes" value={`${passes.length}`} />
+            <Metric label="Clips" value={`${timelineClips.length}`} />
             <Metric label="Open Notes" value={`${openNotes.length}`} />
             <Metric label="AI Logs" value={`${aiLogs.length}`} />
           </div>
         </header>
 
+        <TimelinePanel clips={timelineClips} notes={notes} />
+
         <section className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
-          <div className="rounded-lg border border-zinc-200 bg-white">
+          <div id="note-form" className="rounded-lg border border-zinc-200 bg-white">
             <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
               <div>
                 <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
@@ -116,7 +122,7 @@ export default function Home() {
               <input type="hidden" name="projectId" value={project.id} />
               <input type="hidden" name="author" value="user" />
 
-              <div className="grid gap-3 md:grid-cols-2">
+              <div className="grid gap-3 md:grid-cols-3">
                 <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
                   Pass
                   <select
@@ -145,6 +151,44 @@ export default function Home() {
                       </option>
                     ))}
                   </select>
+                </label>
+
+                <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
+                  Timeline Clip
+                  <select
+                    name="timelineItemId"
+                    defaultValue=""
+                    className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
+                  >
+                    <option value="">Whole cut / no clip</option>
+                    {timelineClips.map((clip) => (
+                      <option key={clip.id} value={clip.id}>
+                        {clip.asset?.originalId ?? clip.asset?.basename ?? clip.section} - {clip.section}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+
+              <div className="grid gap-3 md:grid-cols-2">
+                <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
+                  Start Time
+                  <input
+                    name="timecodeStart"
+                    inputMode="decimal"
+                    placeholder="seconds, optional"
+                    className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
+                  />
+                </label>
+
+                <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
+                  End Time
+                  <input
+                    name="timecodeEnd"
+                    inputMode="decimal"
+                    placeholder="seconds, optional"
+                    className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
+                  />
                 </label>
               </div>
 
@@ -264,6 +308,7 @@ export default function Home() {
             <div className="divide-y divide-zinc-200">
               {notes.map((note) => {
                 const pass = note.passId ? passById.get(note.passId) : undefined;
+                const clip = note.timelineItemId ? clipById.get(note.timelineItemId) : undefined;
                 return (
                   <article key={note.id} className="grid gap-3 px-4 py-4">
                     <div className="flex flex-wrap items-center gap-2 text-xs font-semibold uppercase tracking-wide">
@@ -282,8 +327,19 @@ export default function Home() {
                       <span className="rounded-md bg-zinc-100 px-2 py-1 text-zinc-700">
                         {humanize(note.status)}
                       </span>
+                      {note.timecodeStart !== undefined ? (
+                        <span className="rounded-md bg-zinc-100 px-2 py-1 text-zinc-700">
+                          {note.timecodeStart}
+                          {note.timecodeEnd !== undefined ? `-${note.timecodeEnd}` : ""}s
+                        </span>
+                      ) : null}
                       {pass ? (
                         <span className="text-zinc-500">{pass.name}</span>
+                      ) : null}
+                      {clip ? (
+                        <span className="rounded-md bg-zinc-100 px-2 py-1 text-zinc-700">
+                          {clip.asset?.originalId ?? clip.asset?.basename ?? clip.section}
+                        </span>
                       ) : null}
                       <span className="ml-auto text-zinc-500">
                         {formatDate(note.createdAt)}

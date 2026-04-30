@@ -119,6 +119,13 @@ export type TimelineItem = {
   notes?: string;
 };
 
+export type TimelineClip = TimelineItem & {
+  asset?: Asset;
+  timelineStart: number;
+  timelineEnd: number;
+  duration: number;
+};
+
 export type RenderJob = {
   id: string;
   projectId: string;
