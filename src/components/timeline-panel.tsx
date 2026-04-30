@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type MouseEvent } from "react";
+import { useEffect, useRef, type CSSProperties, type MouseEvent } from "react";
 import { MessageSquareText } from "lucide-react";
 import type { Note, TimelineClip, TimelineRole } from "@/lib/types";
 
@@ -60,6 +60,25 @@ function clipLabel(clip: TimelineClip) {
     clip.textOverlay ??
     clip.section
   );
+}
+
+function clipRotation(clip: TimelineClip) {
+  return clip.rotationOverride ?? clip.asset?.rotation ?? 0;
+}
+
+function rotatedThumbnailStyle(rotation: number, thumbnail: string): CSSProperties {
+  const normalized = ((rotation % 360) + 360) % 360;
+  const quarterTurn = normalized === 90 || normalized === 270;
+
+  return {
+    backgroundImage: `url(${thumbnail})`,
+    height: quarterTurn ? "177.7778%" : "100%",
+    maxHeight: "none",
+    maxWidth: "none",
+    transform: `translate(-50%, -50%) rotate(${normalized}deg)`,
+    transformOrigin: "center",
+    width: quarterTurn ? "56.25%" : "100%",
+  };
 }
 
 export function TimelinePanel({
@@ -199,6 +218,7 @@ export function TimelinePanel({
                   />
                   {laneClips.map((clip) => {
                     const thumbnail = mediaUrl(clip.asset?.metadata.thumbnailPath);
+                    const rotation = clipRotation(clip);
                     const width = Math.max(48, clip.duration * pxPerSecond - 2);
                     const notesForClip = noteCounts.get(clip.id) ?? 0;
                     const isSelected = selectedClipId === clip.id;
@@ -226,14 +246,14 @@ export function TimelinePanel({
                             {clipLabel(clip)}
                           </span>
                         </div>
-                        <div
-                          className="mx-1 min-h-0 flex-1 rounded-sm bg-black/30 bg-cover bg-center"
-                          style={
-                            thumbnail
-                              ? { backgroundImage: `url(${thumbnail})` }
-                              : undefined
-                          }
-                        />
+                        <div className="relative mx-1 min-h-0 flex-1 overflow-hidden rounded-sm bg-black/30">
+                          {thumbnail ? (
+                            <div
+                              className="absolute left-1/2 top-1/2 bg-cover bg-center"
+                              style={rotatedThumbnailStyle(rotation, thumbnail)}
+                            />
+                          ) : null}
+                        </div>
                         {notesForClip > 0 ? (
                           <span className="absolute right-0 top-0 inline-flex items-center gap-0.5 rounded-bl bg-yellow-500 px-1 py-px text-[9px] font-semibold text-black">
                             <MessageSquareText className="h-2.5 w-2.5" aria-hidden="true" />

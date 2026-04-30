@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import {
   ArrowDownToLine,
   ArrowUpToLine,
@@ -137,6 +137,24 @@ function humanize(value: string) {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function clipRotation(clip?: TimelineClip) {
+  return clip?.rotationOverride ?? clip?.asset?.rotation ?? 0;
+}
+
+function rotatedMediaStyle(rotation: number): CSSProperties {
+  const normalized = ((rotation % 360) + 360) % 360;
+  const quarterTurn = normalized === 90 || normalized === 270;
+
+  return {
+    height: quarterTurn ? "177.7778%" : "100%",
+    maxHeight: "none",
+    maxWidth: "none",
+    transform: `translate(-50%, -50%) rotate(${normalized}deg)`,
+    transformOrigin: "center",
+    width: quarterTurn ? "56.25%" : "100%",
+  };
 }
 
 export function EditorWorkbench({
@@ -689,6 +707,7 @@ function PreviewPane({
   const canPreviewVideo = clip?.asset?.kind === "video" && source;
   const clipOffset = clip ? clamp(playheadTime - clip.timelineStart, 0, clip.duration) : 0;
   const sourceTime = (clip?.sourceIn ?? 0) + clipOffset;
+  const rotation = clipRotation(clip);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -717,21 +736,25 @@ function PreviewPane({
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
-      <div className="aspect-video w-full overflow-hidden rounded border border-neutral-800 bg-black">
+      <div className="relative aspect-video w-full overflow-hidden rounded border border-neutral-800 bg-black">
         {canPreviewVideo ? (
           <video
             ref={videoRef}
             key={clip.id}
-            className="h-full w-full object-contain"
-            controls
+            className="absolute left-1/2 top-1/2 object-contain"
+            controls={rotation === 0}
             poster={thumbnail}
             preload="metadata"
             src={source}
+            style={rotatedMediaStyle(rotation)}
           />
         ) : thumbnail ? (
           <div
-            className="h-full w-full bg-contain bg-center bg-no-repeat"
-            style={{ backgroundImage: `url(${thumbnail})` }}
+            className="absolute left-1/2 top-1/2 bg-contain bg-center bg-no-repeat"
+            style={{
+              ...rotatedMediaStyle(rotation),
+              backgroundImage: `url(${thumbnail})`,
+            }}
           />
         ) : (
           <div className="grid h-full place-items-center px-3 text-center text-[10px] uppercase tracking-widest text-neutral-600">
@@ -757,6 +780,7 @@ function PreviewPane({
             <Row label="Timeline" value={`${formatTime(clip.timelineStart)} → ${formatTime(clip.timelineEnd)}`} mono />
             <Row label="Source Range" value={`${formatTime(clip.sourceIn)} → ${formatTime(clip.sourceOut)}`} mono />
             <Row label="Duration" value={`${clip.duration}s`} mono />
+            <Row label="Rotation" value={rotation ? `${rotation}°` : "none"} mono />
             <Row label="Status" value={humanize(clip.asset?.status ?? "unknown")} />
             <Row label="Notes" value={String(clipNotes.length)} mono />
           </tbody>
