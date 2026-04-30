@@ -1,3 +1,5 @@
+"use client";
+
 import {
   Clock3,
   Film,
@@ -52,9 +54,13 @@ function clipLabel(clip: TimelineClip) {
 export function TimelinePanel({
   clips,
   notes,
+  selectedClipId,
+  onSelectClip,
 }: {
   clips: TimelineClip[];
   notes: Note[];
+  selectedClipId?: string;
+  onSelectClip?: (clipId: string) => void;
 }) {
   const totalSeconds = Math.ceil(
     Math.max(60, ...clips.map((clip) => clip.timelineEnd)) / 15,
@@ -148,10 +154,11 @@ export function TimelinePanel({
                     const notesForClip = noteCounts.get(clip.id) ?? 0;
 
                     return (
-                      <a
+                      <button
                         key={clip.id}
-                        href="#note-form"
-                        className={`absolute top-3 flex h-[88px] flex-col overflow-hidden rounded-md border shadow-sm transition hover:z-10 hover:-translate-y-0.5 hover:shadow-lg ${clipStyles[clip.role]}`}
+                        type="button"
+                        onClick={() => onSelectClip?.(clip.id)}
+                        className={`absolute top-3 flex h-[88px] flex-col overflow-hidden rounded-md border text-left shadow-sm transition hover:z-10 hover:-translate-y-0.5 hover:shadow-lg focus:outline-none focus:ring-2 focus:ring-white/70 ${selectedClipId === clip.id ? "z-10 ring-2 ring-white" : ""} ${clipStyles[clip.role]}`}
                         style={{
                           left: `${clip.timelineStart * pxPerSecond}px`,
                           width: `${width}px`,
@@ -187,7 +194,7 @@ export function TimelinePanel({
                             style={{ width: `${Math.min(100, Math.max(18, clip.duration * 2))}%` }}
                           />
                         </div>
-                      </a>
+                      </button>
                     );
                   })}
                 </div>
@@ -212,7 +219,7 @@ export function TimelinePanel({
         </span>
         <span className="inline-flex items-center gap-1.5">
           <Play className="h-3.5 w-3.5" aria-hidden="true" />
-          clip blocks jump to notes
+          clip blocks select preview
         </span>
       </div>
     </section>

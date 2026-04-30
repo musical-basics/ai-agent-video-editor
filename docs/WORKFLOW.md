@@ -10,7 +10,7 @@ This app is the reusable layer for review-driven editing. It should stay project
 4. **Paper Edit:** Turn the shortlist into story order.
 5. **Assembly:** Convert the paper edit into source ranges, placeholders, labels, and render instructions.
 6. **Review Cut:** Generate a render for the human to watch.
-7. **Timeline Review:** Human scans the rough-cut timeline and finds the exact clip or region that needs work.
+7. **Timeline Review:** Human scans the rough-cut timeline, selects clips, and checks the preview pane for the exact region that needs work.
 8. **Notes:** Human records corrections in this app, linked to the current pass and timeline clip where possible.
 9. **Fix Pass:** AI edits against open notes and writes fix logs back to the same project database.
 

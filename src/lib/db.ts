@@ -316,6 +316,7 @@ function seedTimeline(database: Database.Database, projectId: string, timestamp:
       status,
       metadata: JSON.stringify({
         source: item.source,
+        relativePath,
         thumbnailPath,
         seededAt: timestamp,
       }),

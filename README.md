@@ -10,6 +10,7 @@ The core idea is simple: the human marks what needs to change, the AI performs t
 - Local SQLite database at `.cut-notes/cut-notes.sqlite`
 - One active seeded project for the Piano Hand Size Part 2 workflow
 - Horizontal rough-cut timeline with clip blocks, tracks, time ruler, and thumbnails
+- Preview pane for the selected timeline clip, including local video playback where supported
 - Pass tracker for plan, descriptors, shortlist, paper edit, assembly, and rough cut review
 - User review notes for clip rotation, trims, reorder requests, issues, decisions, and general comments
 - AI fix-log notes in the same project ledger
@@ -17,7 +18,7 @@ The core idea is simple: the human marks what needs to change, the AI performs t
 ## Workflow
 
 1. Open the app during rough-cut review.
-2. Scroll the timeline and identify the clip or time range that needs work.
+2. Select a timeline clip and review it in the preview pane.
 3. Add notes against the current pass and timeline clip.
 4. Run the next AI edit pass using the open notes as the checklist.
 5. After the edit, the AI adds `fix_log` notes describing what changed.

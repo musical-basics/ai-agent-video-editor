@@ -1,40 +1,16 @@
 import {
   Bot,
-  CheckCircle2,
-  CircleDot,
   Clock3,
   Database,
   Film,
   GitBranch,
-  NotebookPen,
-  RotateCw,
-  Save,
-  Scissors,
-  SendToBack,
   SlidersHorizontal,
-  type LucideIcon,
 } from "lucide-react";
-import { createNote } from "./actions";
-import { TimelinePanel } from "@/components/timeline-panel";
+import { EditorWorkbench } from "@/components/editor-workbench";
 import { getActiveProject, getNotes, getPasses, getTimelineClips } from "@/lib/db";
-import type { NoteType, PassStatus } from "@/lib/types";
+import type { PassStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
-
-const noteTypes: Array<{
-  value: NoteType;
-  label: string;
-  icon: LucideIcon;
-}> = [
-  { value: "general", label: "General", icon: NotebookPen },
-  { value: "clip_review", label: "Clip Review", icon: Film },
-  { value: "rotation", label: "Rotation", icon: RotateCw },
-  { value: "trim", label: "Trim", icon: Scissors },
-  { value: "reorder", label: "Move Front/Back", icon: SendToBack },
-  { value: "issue", label: "Issue", icon: CircleDot },
-  { value: "decision", label: "Decision", icon: CheckCircle2 },
-  { value: "fix_log", label: "AI Fix Log", icon: Bot },
-];
 
 const passStatusStyles: Record<PassStatus, string> = {
   planned: "border-zinc-200 bg-zinc-50 text-zinc-600",
@@ -102,170 +78,49 @@ export default function Home() {
           </div>
         </header>
 
-        <TimelinePanel clips={timelineClips} notes={notes} />
+        <EditorWorkbench
+          project={project}
+          passes={passes}
+          timelineClips={timelineClips}
+          notes={notes}
+        />
 
-        <section className="grid gap-4 lg:grid-cols-[minmax(0,1.05fr)_minmax(360px,0.95fr)]">
-          <div id="note-form" className="rounded-lg border border-zinc-200 bg-white">
-            <div className="flex items-center justify-between border-b border-zinc-200 px-4 py-3">
-              <div>
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                  Review Notes
-                </h2>
-                <p className="mt-1 text-sm text-zinc-600">
-                  One project, one note ledger, every pass accountable.
-                </p>
-              </div>
-              <NotebookPen className="h-5 w-5 text-zinc-500" aria-hidden="true" />
+        <section className="grid gap-4 lg:grid-cols-2">
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                Current Pass
+              </h2>
+              <Clock3 className="h-5 w-5 text-zinc-500" aria-hidden="true" />
             </div>
-
-            <form action={createNote} className="grid gap-4 p-4">
-              <input type="hidden" name="projectId" value={project.id} />
-              <input type="hidden" name="author" value="user" />
-
-              <div className="grid gap-3 md:grid-cols-3">
-                <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                  Pass
-                  <select
-                    name="passId"
-                    defaultValue="pass-5-rough-cut"
-                    className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                  >
-                    {passes.map((pass) => (
-                      <option key={pass.id} value={pass.id}>
-                        {pass.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                  Note Type
-                  <select
-                    name="noteType"
-                    defaultValue="clip_review"
-                    className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                  >
-                    {noteTypes.map((type) => (
-                      <option key={type.value} value={type.value}>
-                        {type.label}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-
-                <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                  Timeline Clip
-                  <select
-                    name="timelineItemId"
-                    defaultValue=""
-                    className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                  >
-                    <option value="">Whole cut / no clip</option>
-                    {timelineClips.map((clip) => (
-                      <option key={clip.id} value={clip.id}>
-                        {clip.asset?.originalId ?? clip.asset?.basename ?? clip.section} - {clip.section}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-
-              <div className="grid gap-3 md:grid-cols-2">
-                <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                  Start Time
-                  <input
-                    name="timecodeStart"
-                    inputMode="decimal"
-                    placeholder="seconds, optional"
-                    className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                  />
-                </label>
-
-                <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                  End Time
-                  <input
-                    name="timecodeEnd"
-                    inputMode="decimal"
-                    placeholder="seconds, optional"
-                    className="h-11 rounded-md border border-zinc-300 bg-white px-3 text-sm text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                  />
-                </label>
-              </div>
-
-              <label className="grid gap-1.5 text-sm font-medium text-zinc-700">
-                Note
-                <textarea
-                  name="body"
-                  rows={7}
-                  required
-                  placeholder="Clip 026 is sideways. Rotate clockwise. Also trim the dead air before David starts talking."
-                  className="resize-y rounded-md border border-zinc-300 bg-white px-3 py-3 text-sm leading-6 text-zinc-950 outline-none transition placeholder:text-zinc-400 focus:border-zinc-900 focus:ring-2 focus:ring-zinc-200"
-                />
-              </label>
-
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div className="flex flex-wrap gap-2">
-                  {noteTypes.slice(2, 6).map((type) => {
-                    const Icon = type.icon;
-                    return (
-                      <span
-                        key={type.value}
-                        className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1 text-xs font-medium text-zinc-600"
-                      >
-                        <Icon className="h-3.5 w-3.5" aria-hidden="true" />
-                        {type.label}
-                      </span>
-                    );
-                  })}
-                </div>
-                <button
-                  type="submit"
-                  className="inline-flex h-10 items-center gap-2 rounded-md bg-zinc-950 px-4 text-sm font-semibold text-white transition hover:bg-zinc-800 focus:outline-none focus:ring-2 focus:ring-zinc-400"
-                >
-                  <Save className="h-4 w-4" aria-hidden="true" />
-                  Save Note
-                </button>
-              </div>
-            </form>
+            <p className="text-xl font-semibold text-zinc-950">
+              {project.metadata.currentPass}
+            </p>
+            <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <Info label="Runtime" value={project.metadata.targetRuntime ?? "Unset"} />
+              <Info label="Root" value={project.rootPath} />
+            </dl>
           </div>
 
-          <aside className="grid gap-4">
-            <div className="rounded-lg border border-zinc-200 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                  Current Pass
-                </h2>
-                <Clock3 className="h-5 w-5 text-zinc-500" aria-hidden="true" />
-              </div>
-              <p className="text-xl font-semibold text-zinc-950">
-                {project.metadata.currentPass}
+          <div className="rounded-lg border border-zinc-200 bg-white p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
+                Agent Loop
+              </h2>
+              <Bot className="h-5 w-5 text-zinc-500" aria-hidden="true" />
+            </div>
+            <div className="grid gap-3 text-sm leading-6 text-zinc-700">
+              <p>
+                User notes stay open until the next edit pass. AI notes are
+                written back as fix logs so the review cut can be checked
+                against the request.
               </p>
-              <dl className="mt-4 grid grid-cols-2 gap-3 text-sm">
-                <Info label="Runtime" value={project.metadata.targetRuntime ?? "Unset"} />
-                <Info label="Root" value={project.rootPath} />
-              </dl>
+              <p>
+                Each fix log should name the clip, the edit decision, and the
+                render or script that contains the change.
+              </p>
             </div>
-
-            <div className="rounded-lg border border-zinc-200 bg-white p-4">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-500">
-                  Agent Loop
-                </h2>
-                <Bot className="h-5 w-5 text-zinc-500" aria-hidden="true" />
-              </div>
-              <div className="grid gap-3 text-sm leading-6 text-zinc-700">
-                <p>
-                  User notes stay open until the next edit pass. AI notes are
-                  written back as fix logs so the review cut can be checked
-                  against the request.
-                </p>
-                <p>
-                  Each fix log should name the clip, the edit decision, and the
-                  render or script that contains the change.
-                </p>
-              </div>
-            </div>
-          </aside>
+          </div>
         </section>
 
         <section className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
