@@ -10,6 +10,8 @@ export const sourceRelativePaths: Record<string, string> = {
     "01_Trip_Setup/002_IMG_0257_hagerstown_gas_station.MOV",
   "003_IMG_0258_road_trip_snacks_no_caffeine.MOV":
     "01_Trip_Setup/003_IMG_0258_road_trip_snacks_no_caffeine.MOV",
+  "004_IMG_0259_sheets_stop_middle_of_nowhere.MOV":
+    "01_Trip_Setup/004_IMG_0259_sheets_stop_middle_of_nowhere.MOV",
   "005_IMG_0260_waking_up_after_car_nap.MOV":
     "01_Trip_Setup/005_IMG_0260_waking_up_after_car_nap.MOV",
   "006_IMG_0261_car_nap_recovery_drive_resumes.MOV":
@@ -1173,3 +1175,96 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
     notes: "V3: final hook card.",
   },
 ];
+
+function carryToPass7(item: SeedTimelineItem): SeedTimelineItem {
+  return {
+    ...item,
+    id: item.id.replace(/^p6-/, "p7-"),
+    notes: item.notes.replace(/^V3:/, "V4:"),
+  };
+}
+
+export const pass7TimelineSeed: SeedTimelineItem[] = pass6TimelineSeed.flatMap((item) => {
+  switch (item.id) {
+    case "p6-001-late-night-trip-setup":
+      return [
+        {
+          ...carryToPass7(item),
+          targetDuration: 16,
+          sourceOut: 16,
+          notes: "V4: extended the cold-open setup so the line does not cut off abruptly.",
+        },
+      ];
+
+    case "p6-003-p056-cold-placeholder":
+      return [
+        {
+          ...carryToPass7(item),
+          notes: "V4: placeholder card with low travel music underneath.",
+        },
+      ];
+
+    case "p6-004-cold-title-card":
+      return [
+        {
+          ...carryToPass7(item),
+          notes: "V4: title card with low travel music underneath.",
+        },
+      ];
+
+    case "p6-005-front-facing-intro":
+      return [
+        {
+          ...carryToPass7(item),
+          id: "p7-005-front-facing-intro-open",
+          targetDuration: 6,
+          sourceIn: 0,
+          sourceOut: 6,
+          notes: "V4: fine-edit intro opening; keeps the clean part-two setup line.",
+        },
+        {
+          ...carryToPass7(item),
+          id: "p7-006-front-facing-intro-clean-thesis",
+          targetDuration: 17,
+          sourceIn: 13.5,
+          sourceOut: 30.5,
+          notes:
+            "V4: jumps past the false start and cuts before the repeated smaller-hands line.",
+        },
+      ];
+
+    case "p6-008-vo01-rainy-drive":
+      return [
+        {
+          ...carryToPass7(item),
+          id: "p7-009-vo01-sheetz-stop",
+          source: "004_IMG_0259_sheets_stop_middle_of_nowhere.MOV",
+          sourceIn: 0,
+          sourceOut: 6,
+          targetDuration: 6,
+          notes:
+            "V4: replaced early rainy-drive footage so IMG_0266 only appears after the car-nap beat.",
+        },
+      ];
+
+    case "p6-049-vo05-mileage":
+      return [
+        {
+          ...carryToPass7(item),
+          notes: "V4: keeps the full available mileage clip under VO 05/music.",
+        },
+        {
+          id: "p7-049b-vo05-mileage-hold",
+          source: "90_Reference_Frames/IMG_0300.jpg",
+          section: item.section,
+          targetDuration: 2,
+          role: "still",
+          notes:
+            "V4: adds a 2s still hold so the mileage beat no longer feels like it cuts off too fast.",
+        },
+      ];
+
+    default:
+      return [carryToPass7(item)];
+  }
+});

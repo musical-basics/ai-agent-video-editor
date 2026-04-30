@@ -4,6 +4,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import {
   pass6TimelineSeed,
+  pass7TimelineSeed,
   pianoProjectRoot,
   sourceRelativePaths,
   timelineSeed,
@@ -185,9 +186,9 @@ function seed(database: Database.Database) {
           thesis:
             "I drove overnight to pick up rare DS 6.0 and DS 5.5 piano keyboards because hand size changes the way you experience the piano.",
           targetRuntime: "11:30-12:30",
-          currentPass: "Pass 6: VO and Music Cleanup",
-          currentPassId: "pass-6-vo-music-cleanup",
-          currentRenderJobId: "render-v3-vo-music-cleanup",
+          currentPass: "Pass 7: Clip Note Fixes",
+          currentPassId: "pass-7-clip-note-fixes",
+          currentRenderJobId: "render-v4-clip-note-fixes",
           githubRepo: "https://github.com/musical-basics/piano-hand-size-2-video",
         }),
       });
@@ -207,6 +208,13 @@ function seed(database: Database.Database) {
       "needs_review",
       "Keep generated voiceover off speaking clips and add music to travel montage sections.",
     ],
+    [
+      "pass-7-clip-note-fixes",
+      "Pass 7: Clip Note Fixes",
+      7,
+      "needs_review",
+      "Apply open clip notes, keep travel music, and comment on each requested fix.",
+    ],
   ] as const;
 
   const insertPass = database.prepare(
@@ -220,6 +228,7 @@ function seed(database: Database.Database) {
 
   seedTimeline(database, projectId, timestamp, "pass-4-assembly", timelineSeed);
   seedTimeline(database, projectId, timestamp, "pass-6-vo-music-cleanup", pass6TimelineSeed);
+  seedTimeline(database, projectId, timestamp, "pass-7-clip-note-fixes", pass7TimelineSeed);
   seedRenderJobs(database, projectId, timestamp);
   updateProjectCurrentPass(database, projectId);
 
@@ -395,6 +404,28 @@ function seedRenderJobs(database: Database.Database, projectId: string, timestam
       command: "./make_rough_review_cut_v3.sh",
       logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/PASS5_V3_FIX_LOG.md",
     });
+
+  database
+    .prepare(
+      `INSERT OR IGNORE INTO render_jobs (
+        id, projectId, passId, name, status, outputPath, startedAt, completedAt, command, logPath
+      ) VALUES (
+        @id, @projectId, @passId, @name, @status, @outputPath, @startedAt, @completedAt, @command, @logPath
+      )`,
+    )
+    .run({
+      id: "render-v4-clip-note-fixes",
+      projectId,
+      passId: "pass-7-clip-note-fixes",
+      name: "Rough review cut v4",
+      status: "done",
+      outputPath:
+        "/Users/lionelyu/Music/Piano Hand Size Part 2/review_cuts/piano_hand_size_part2_rough_cut_v4.mp4",
+      startedAt: timestamp,
+      completedAt: timestamp,
+      command: "./make_rough_review_cut_v4.sh",
+      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/PASS7_V4_FIX_LOG.md",
+    });
 }
 
 function updateProjectCurrentPass(database: Database.Database, projectId: string) {
@@ -410,9 +441,9 @@ function updateProjectCurrentPass(database: Database.Database, projectId: string
       updatedAt: now(),
       metadata: JSON.stringify({
         ...metadata,
-        currentPass: "Pass 6: VO and Music Cleanup",
-        currentPassId: "pass-6-vo-music-cleanup",
-        currentRenderJobId: "render-v3-vo-music-cleanup",
+        currentPass: "Pass 7: Clip Note Fixes",
+        currentPassId: "pass-7-clip-note-fixes",
+        currentRenderJobId: "render-v4-clip-note-fixes",
       }),
     });
 }
