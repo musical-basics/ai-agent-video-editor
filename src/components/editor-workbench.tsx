@@ -5,6 +5,7 @@ import {
   ArrowDownToLine,
   ArrowUpToLine,
   BadgeAlert,
+  Clapperboard,
   LocateFixed,
   Pause,
   Play,
@@ -19,7 +20,7 @@ import {
 } from "lucide-react";
 import { createNote } from "@/app/actions";
 import { TimelinePanel } from "@/components/timeline-panel";
-import type { Note, NoteType, Pass, Project, TimelineClip } from "@/lib/types";
+import type { Note, NoteType, Pass, Project, RenderJob, TimelineClip } from "@/lib/types";
 
 type QuickAction = {
   label: string;
@@ -106,9 +107,15 @@ function formatTime(totalSeconds?: number) {
   return `${minutes.toString().padStart(2, "0")}:${seconds.toString().padStart(2, "0")}`;
 }
 
-function mediaUrl(pathValue: unknown) {
+function mediaUrl(pathValue: unknown, projectRoot?: string) {
   if (typeof pathValue !== "string" || !pathValue) return undefined;
-  return `/media/${pathValue.split("/").map(encodeURIComponent).join("/")}`;
+  let relativePath = pathValue;
+
+  if (projectRoot && relativePath.startsWith(`${projectRoot}/`)) {
+    relativePath = relativePath.slice(projectRoot.length + 1);
+  }
+
+  return `/media/${relativePath.split("/").map(encodeURIComponent).join("/")}`;
 }
 
 function clipName(clip: TimelineClip) {
@@ -136,31 +143,60 @@ export function EditorWorkbench({
   project,
   passes,
   timelineClips,
+  renderJobs,
   notes,
 }: {
   project: Project;
   passes: Pass[];
   timelineClips: TimelineClip[];
+  renderJobs: RenderJob[];
   notes: Note[];
 }) {
-  const [selectedPassId, setSelectedPassId] = useState("pass-5-rough-cut");
+  const reviewablePasses = useMemo(() => {
+    const passIdsWithTimeline = new Set(timelineClips.map((clip) => clip.passId).filter(Boolean));
+    return passes.filter((pass) => passIdsWithTimeline.has(pass.id));
+  }, [passes, timelineClips]);
+  const defaultPassId =
+    project.metadata.currentPassId ??
+    reviewablePasses.at(-1)?.id ??
+    passes.at(-1)?.id ??
+    "";
+  const [selectedPassId, setSelectedPassId] = useState(defaultPassId);
   const [noteType, setNoteType] = useState<NoteType>("clip_review");
   const [draft, setDraft] = useState("");
   const [playheadTime, setPlayheadTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [followPlayhead, setFollowPlayhead] = useState(true);
   const [scrollSignal, setScrollSignal] = useState(0);
-  const totalDuration = useMemo(
-    () => Math.max(0, ...timelineClips.map((clip) => clip.timelineEnd)),
-    [timelineClips],
+  const visibleTimelineClips = useMemo(
+    () => timelineClips.filter((clip) => clip.passId === selectedPassId),
+    [selectedPassId, timelineClips],
   );
-  const selectedClip = clipAtTime(timelineClips, playheadTime) ?? timelineClips[0];
+  const selectedRenderJob = useMemo(
+    () =>
+      renderJobs.find(
+        (job) => job.passId === selectedPassId && job.status === "done" && job.outputPath,
+      ) ?? renderJobs.find((job) => job.status === "done" && job.outputPath),
+    [renderJobs, selectedPassId],
+  );
+  const totalDuration = useMemo(
+    () => Math.max(0, ...visibleTimelineClips.map((clip) => clip.timelineEnd)),
+    [visibleTimelineClips],
+  );
+  const selectedClip = clipAtTime(visibleTimelineClips, playheadTime) ?? visibleTimelineClips[0];
   const clipNotes = useMemo(
-    () => notes.filter((note) => note.timelineItemId === selectedClip?.id),
-    [notes, selectedClip?.id],
+    () =>
+      selectedClip
+        ? notes.filter(
+            (note) =>
+              note.timelineItemId === selectedClip.id ||
+              (selectedClip.assetId && note.assetId === selectedClip.assetId),
+          )
+        : [],
+    [notes, selectedClip],
   );
   const selectedClipIndex = selectedClip
-    ? timelineClips.findIndex((clip) => clip.id === selectedClip.id)
+    ? visibleTimelineClips.findIndex((clip) => clip.id === selectedClip.id)
     : -1;
 
   useEffect(() => {
@@ -216,13 +252,20 @@ export function EditorWorkbench({
     setDraft(action.body(selectedClip));
   }
 
+  function changeSelectedPass(nextPassId: string) {
+    setSelectedPassId(nextPassId);
+    setPlayheadTime(0);
+    setIsPlaying(false);
+    setScrollSignal((value) => value + 1);
+  }
+
   function seekToTime(nextTime: number) {
     const boundedTime = clamp(nextTime, 0, totalDuration);
     setPlayheadTime(boundedTime);
   }
 
   function selectClip(clipId: string) {
-    const clip = timelineClips.find((item) => item.id === clipId);
+    const clip = visibleTimelineClips.find((item) => item.id === clipId);
     if (clip) setPlayheadTime(clip.timelineStart);
   }
 
@@ -233,7 +276,10 @@ export function EditorWorkbench({
 
   function jumpToClip(direction: -1 | 1) {
     if (selectedClipIndex < 0) return;
-    const nextClip = timelineClips[clamp(selectedClipIndex + direction, 0, timelineClips.length - 1)];
+    const nextClip =
+      visibleTimelineClips[
+        clamp(selectedClipIndex + direction, 0, visibleTimelineClips.length - 1)
+      ];
     if (!nextClip) return;
     setPlayheadTime(nextClip.timelineStart);
     setScrollSignal((value) => value + 1);
@@ -249,10 +295,30 @@ export function EditorWorkbench({
         <span className="text-sm font-semibold text-neutral-100">
           {project.name}
         </span>
-        <span className="ml-auto text-[10px] text-neutral-600">
-          {timelineClips.length} clips · {notes.length} notes
+        <label className="ml-auto flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-500">
+          Reviewing
+          <select
+            value={selectedPassId}
+            onChange={(event) => changeSelectedPass(event.target.value)}
+            className="max-w-[260px] rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs normal-case tracking-normal text-neutral-200 outline-none focus:border-blue-600"
+          >
+            {(reviewablePasses.length > 0 ? reviewablePasses : passes).map((pass) => (
+              <option key={pass.id} value={pass.id}>
+                {pass.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="text-[10px] text-neutral-600">
+          {visibleTimelineClips.length} clips · {notes.length} notes
         </span>
       </header>
+
+      <ReviewRenderPane
+        projectRoot={project.rootPath}
+        renderJob={selectedRenderJob}
+        selectedPass={passes.find((pass) => pass.id === selectedPassId)}
+      />
 
       <TransportBar
         isPlaying={isPlaying}
@@ -269,7 +335,7 @@ export function EditorWorkbench({
       />
 
       <TimelinePanel
-        clips={timelineClips}
+        clips={visibleTimelineClips}
         notes={notes}
         selectedClipId={selectedClip?.id}
         playheadTime={playheadTime}
@@ -303,7 +369,7 @@ export function EditorWorkbench({
               <select
                 name="passId"
                 value={selectedPassId}
-                onChange={(event) => setSelectedPassId(event.target.value)}
+                onChange={(event) => changeSelectedPass(event.target.value)}
                 className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-600"
               >
                 {passes.map((pass) => (
@@ -332,7 +398,7 @@ export function EditorWorkbench({
                 onChange={(event) => selectClip(event.target.value)}
                 className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-600"
               >
-                {timelineClips.map((clip) => (
+                {visibleTimelineClips.map((clip) => (
                   <option key={clip.id} value={clip.id}>
                     {clipName(clip)}
                   </option>
@@ -532,6 +598,74 @@ function TransportBar({
       <span className="hidden rounded border border-neutral-700 bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-500 sm:inline-flex">
         Space
       </span>
+    </div>
+  );
+}
+
+function ReviewRenderPane({
+  projectRoot,
+  renderJob,
+  selectedPass,
+}: {
+  projectRoot: string;
+  renderJob?: RenderJob;
+  selectedPass?: Pass;
+}) {
+  const source = mediaUrl(renderJob?.outputPath, projectRoot);
+
+  return (
+    <section className="grid gap-3 border-b border-neutral-800 bg-neutral-950 p-3 lg:grid-cols-[minmax(360px,520px)_1fr]">
+      <div className="aspect-video min-w-0 overflow-hidden rounded border border-neutral-800 bg-black">
+        {source ? (
+          <video
+            key={renderJob?.id}
+            className="h-full w-full object-contain"
+            controls
+            preload="metadata"
+            src={source}
+          />
+        ) : (
+          <div className="grid h-full place-items-center px-4 text-center text-[10px] uppercase tracking-widest text-neutral-600">
+            No rendered review cut for this pass.
+          </div>
+        )}
+      </div>
+
+      <div className="flex min-w-0 flex-col justify-between gap-3">
+        <div className="space-y-2">
+          <div className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-500">
+            <Clapperboard className="h-3.5 w-3.5" aria-hidden="true" />
+            Current Render
+          </div>
+          <div>
+            <h2 className="truncate text-sm font-semibold text-neutral-100">
+              {renderJob?.name ?? selectedPass?.name ?? "No render selected"}
+            </h2>
+            <p className="mt-1 text-xs leading-5 text-neutral-500">
+              {selectedPass?.goal ??
+                "When the AI creates the next pass, it should write a render job and timeline rows here."}
+            </p>
+          </div>
+        </div>
+
+        <dl className="grid gap-1.5 text-xs sm:grid-cols-2">
+          <RenderInfo label="Pass" value={selectedPass?.name ?? "—"} />
+          <RenderInfo label="Status" value={renderJob?.status ?? "—"} />
+          <RenderInfo label="Output" value={renderJob?.outputPath ?? "—"} />
+          <RenderInfo label="Command" value={renderJob?.command ?? "—"} />
+        </dl>
+      </div>
+    </section>
+  );
+}
+
+function RenderInfo({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded border border-neutral-800 bg-neutral-900 px-2 py-1.5">
+      <dt className="text-[10px] uppercase tracking-widest text-neutral-600">{label}</dt>
+      <dd className="mt-0.5 truncate text-neutral-300" title={value}>
+        {value}
+      </dd>
     </div>
   );
 }

@@ -1,6 +1,12 @@
 import { Bot, Clock3, Database, Film, GitBranch, SlidersHorizontal } from "lucide-react";
 import { EditorWorkbench } from "@/components/editor-workbench";
-import { getActiveProject, getNotes, getPasses, getTimelineClips } from "@/lib/db";
+import {
+  getActiveProject,
+  getNotes,
+  getPasses,
+  getRenderJobs,
+  getTimelineClips,
+} from "@/lib/db";
 import type { PassStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -41,6 +47,13 @@ export default function Home() {
   const project = getActiveProject();
   const passes = getPasses(project.id);
   const timelineClips = getTimelineClips(project.id);
+  const renderJobs = getRenderJobs(project.id);
+  const timelinePassIds = new Set(timelineClips.map((clip) => clip.passId).filter(Boolean));
+  const latestTimelinePass =
+    [...passes].reverse().find((pass) => timelinePassIds.has(pass.id)) ?? passes.at(-1);
+  const currentTimelineClips = latestTimelinePass
+    ? timelineClips.filter((clip) => clip.passId === latestTimelinePass.id)
+    : timelineClips;
   const notes = getNotes(project.id);
   const openNotes = notes.filter((note) => ["open", "needs_review"].includes(note.status));
   const aiLogs = notes.filter((note) => note.author === "ai");
@@ -75,7 +88,7 @@ export default function Home() {
 
           <div className="grid grid-cols-2 gap-1.5 sm:w-[460px] sm:grid-cols-4">
             <Metric label="Passes" value={`${passes.length}`} />
-            <Metric label="Clips" value={`${timelineClips.length}`} />
+            <Metric label="Clips" value={`${currentTimelineClips.length}`} />
             <Metric label="Open Notes" value={`${openNotes.length}`} />
             <Metric label="AI Logs" value={`${aiLogs.length}`} />
           </div>
@@ -85,6 +98,7 @@ export default function Home() {
           project={project}
           passes={passes}
           timelineClips={timelineClips}
+          renderJobs={renderJobs}
           notes={notes}
         />
 

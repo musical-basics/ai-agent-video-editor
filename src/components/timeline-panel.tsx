@@ -93,9 +93,22 @@ export function TimelinePanel({
   );
   const noteCounts = new Map<string, number>();
 
-  for (const note of notes) {
-    if (!note.timelineItemId) continue;
-    noteCounts.set(note.timelineItemId, (noteCounts.get(note.timelineItemId) ?? 0) + 1);
+  for (const clip of clips) {
+    const matchingNotes = new Set<string>();
+
+    for (const note of notes) {
+      if (note.timelineItemId === clip.id) {
+        matchingNotes.add(note.id);
+      }
+
+      if (clip.assetId && note.assetId === clip.assetId) {
+        matchingNotes.add(note.id);
+      }
+    }
+
+    if (matchingNotes.size > 0) {
+      noteCounts.set(clip.id, matchingNotes.size);
+    }
   }
 
   useEffect(() => {

@@ -2,8 +2,21 @@ import Database from "better-sqlite3";
 import fs from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { pianoProjectRoot, sourceRelativePaths, timelineSeed } from "./seed-data";
-import type { Asset, Note, Pass, Project, TimelineClip, TimelineItem } from "./types";
+import {
+  pass6TimelineSeed,
+  pianoProjectRoot,
+  sourceRelativePaths,
+  timelineSeed,
+} from "./seed-data";
+import type {
+  Asset,
+  Note,
+  Pass,
+  Project,
+  RenderJob,
+  TimelineClip,
+  TimelineItem,
+} from "./types";
 
 const dataDir = path.join(/*turbopackIgnore: true*/ process.cwd(), ".cut-notes");
 const dbPath = path.join(dataDir, "cut-notes.sqlite");
@@ -18,6 +31,7 @@ type DbNoteRow = Omit<Note, "metadata"> & { metadata: string };
 type DbTimelineItemRow = Omit<TimelineItem, "enabled"> & {
   enabled: number;
 };
+type DbRenderJobRow = RenderJob;
 
 let db: Database.Database | undefined;
 
@@ -171,7 +185,9 @@ function seed(database: Database.Database) {
           thesis:
             "I drove overnight to pick up rare DS 6.0 and DS 5.5 piano keyboards because hand size changes the way you experience the piano.",
           targetRuntime: "11:30-12:30",
-          currentPass: "Pass 5: Rough Review Cut",
+          currentPass: "Pass 6: VO and Music Cleanup",
+          currentPassId: "pass-6-vo-music-cleanup",
+          currentRenderJobId: "render-v3-vo-music-cleanup",
           githubRepo: "https://github.com/musical-basics/piano-hand-size-2-video",
         }),
       });
@@ -184,6 +200,13 @@ function seed(database: Database.Database) {
     ["pass-3-paper-edit", "Pass 3: Paper Edit", 3, "done", "Turn the shortlist into a rough ordered story."],
     ["pass-4-assembly", "Pass 4: Assembly Notes", 4, "done", "Specify source ranges, b-roll, labels, and render notes."],
     ["pass-5-rough-cut", "Pass 5: Rough Review Cut", 5, "needs_review", "Review the first automated rough cut and collect fixes."],
+    [
+      "pass-6-vo-music-cleanup",
+      "Pass 6: VO and Music Cleanup",
+      6,
+      "needs_review",
+      "Keep generated voiceover off speaking clips and add music to travel montage sections.",
+    ],
   ] as const;
 
   const insertPass = database.prepare(
@@ -195,7 +218,10 @@ function seed(database: Database.Database) {
     insertPass.run(id, projectId, name, order, status, goal, timestamp, status === "done" ? timestamp : null);
   }
 
-  seedTimeline(database, projectId, timestamp);
+  seedTimeline(database, projectId, timestamp, "pass-4-assembly", timelineSeed);
+  seedTimeline(database, projectId, timestamp, "pass-6-vo-music-cleanup", pass6TimelineSeed);
+  seedRenderJobs(database, projectId, timestamp);
+  updateProjectCurrentPass(database, projectId);
 
   const insertNote = database.prepare(
     `INSERT OR IGNORE INTO notes (
@@ -246,7 +272,13 @@ function seed(database: Database.Database) {
   }
 }
 
-function seedTimeline(database: Database.Database, projectId: string, timestamp: string) {
+function seedTimeline(
+  database: Database.Database,
+  projectId: string,
+  timestamp: string,
+  passId: string,
+  timelineItems: typeof timelineSeed,
+) {
   const insertAsset = database.prepare(
     `INSERT INTO assets (
       id, projectId, kind, path, basename, originalId, sequence,
@@ -292,7 +324,7 @@ function seedTimeline(database: Database.Database, projectId: string, timestamp:
       notes = excluded.notes`,
   );
 
-  for (const [order, item] of timelineSeed.entries()) {
+  for (const [order, item] of timelineItems.entries()) {
     const assetId = assetIdForSource(item.source);
     const basename = basenameForSource(item.source);
     const relativePath = relativePathForSource(item.source);
@@ -326,7 +358,7 @@ function seedTimeline(database: Database.Database, projectId: string, timestamp:
       id: item.id,
       projectId,
       assetId,
-      passId: "pass-4-assembly",
+      passId,
       section: item.section,
       order,
       sourceIn: item.sourceIn ?? null,
@@ -334,11 +366,55 @@ function seedTimeline(database: Database.Database, projectId: string, timestamp:
       targetDuration: item.targetDuration,
       role: item.role,
       enabled: 1,
-      rotationOverride: null,
+      rotationOverride: item.rotationOverride ?? null,
       textOverlay: item.textOverlay ?? null,
       notes: item.notes,
     });
   }
+}
+
+function seedRenderJobs(database: Database.Database, projectId: string, timestamp: string) {
+  database
+    .prepare(
+      `INSERT OR IGNORE INTO render_jobs (
+        id, projectId, passId, name, status, outputPath, startedAt, completedAt, command, logPath
+      ) VALUES (
+        @id, @projectId, @passId, @name, @status, @outputPath, @startedAt, @completedAt, @command, @logPath
+      )`,
+    )
+    .run({
+      id: "render-v3-vo-music-cleanup",
+      projectId,
+      passId: "pass-6-vo-music-cleanup",
+      name: "Rough review cut v3",
+      status: "done",
+      outputPath:
+        "/Users/lionelyu/Music/Piano Hand Size Part 2/review_cuts/piano_hand_size_part2_rough_cut_v3.mp4",
+      startedAt: timestamp,
+      completedAt: timestamp,
+      command: "./make_rough_review_cut_v3.sh",
+      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/PASS5_V3_FIX_LOG.md",
+    });
+}
+
+function updateProjectCurrentPass(database: Database.Database, projectId: string) {
+  const row = database
+    .prepare("SELECT metadata FROM projects WHERE id = ?")
+    .get(projectId) as { metadata: string } | undefined;
+  const metadata = parseJson(row?.metadata, {});
+
+  database
+    .prepare("UPDATE projects SET metadata = @metadata, updatedAt = @updatedAt WHERE id = @id")
+    .run({
+      id: projectId,
+      updatedAt: now(),
+      metadata: JSON.stringify({
+        ...metadata,
+        currentPass: "Pass 6: VO and Music Cleanup",
+        currentPassId: "pass-6-vo-music-cleanup",
+        currentRenderJobId: "render-v3-vo-music-cleanup",
+      }),
+    });
 }
 
 function assetIdForSource(source: string) {
@@ -352,14 +428,27 @@ function assetIdForSource(source: string) {
 function basenameForSource(source: string) {
   if (source === "technical-keyboard-stills") return "technical_keyboard_stills";
   if (source === "title-card-road-keyboard") return "cold_open_title_card";
+  if (source.includes(path.sep) || source.includes("/")) return path.basename(source);
   return source;
 }
 
 function relativePathForSource(source: string) {
-  return sourceRelativePaths[source];
+  return sourceRelativePaths[source] ?? (source.includes("/") ? source : undefined);
 }
 
 function thumbnailPathForSource(source: string) {
+  const lower = source.toLowerCase();
+
+  if (
+    source.includes("/") &&
+    (lower.endsWith(".jpg") ||
+      lower.endsWith(".jpeg") ||
+      lower.endsWith(".png") ||
+      lower.endsWith(".webp"))
+  ) {
+    return source;
+  }
+
   if (source === "technical-keyboard-stills") {
     return "04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG";
   }
@@ -389,8 +478,17 @@ function sequenceForSource(source: string) {
 function assetKindForSource(source: string) {
   if (source === "technical-keyboard-stills") return "image";
   if (source === "title-card-road-keyboard") return "placeholder";
-  if (source.endsWith(".MOV") || source.endsWith(".mov") || source.endsWith(".mp4")) {
+  const lower = source.toLowerCase();
+  if (lower.endsWith(".mov") || lower.endsWith(".mp4")) {
     return "video";
+  }
+  if (
+    lower.endsWith(".jpg") ||
+    lower.endsWith(".jpeg") ||
+    lower.endsWith(".png") ||
+    lower.endsWith(".webp")
+  ) {
+    return "image";
   }
 
   return "placeholder";
@@ -430,10 +528,25 @@ export function getAssets(projectId: string): Asset[] {
   }));
 }
 
-export function getTimelineItems(projectId: string): TimelineItem[] {
-  const rows = getDb()
-    .prepare(`SELECT * FROM timeline_items WHERE projectId = ? ORDER BY "order" ASC`)
-    .all(projectId) as DbTimelineItemRow[];
+export function getTimelineItems(projectId: string, passId?: string): TimelineItem[] {
+  const database = getDb();
+  const rows = (
+    passId
+      ? database
+          .prepare(
+            `SELECT * FROM timeline_items
+             WHERE projectId = ? AND passId = ?
+             ORDER BY "order" ASC`,
+          )
+          .all(projectId, passId)
+      : database
+          .prepare(
+            `SELECT * FROM timeline_items
+             WHERE projectId = ?
+             ORDER BY COALESCE(passId, ''), "order" ASC`,
+          )
+          .all(projectId)
+  ) as DbTimelineItemRow[];
 
   return rows.map((row) => ({
     ...row,
@@ -449,14 +562,16 @@ export function getTimelineItems(projectId: string): TimelineItem[] {
   }));
 }
 
-export function getTimelineClips(projectId: string): TimelineClip[] {
+export function getTimelineClips(projectId: string, passId?: string): TimelineClip[] {
   const assets = getAssets(projectId);
   const assetsById = new Map(assets.map((asset) => [asset.id, asset]));
-  const items = getTimelineItems(projectId);
-  let cursor = 0;
+  const items = getTimelineItems(projectId, passId).filter((item) => item.enabled);
+  const cursorsByPass = new Map<string, number>();
 
   return items.map((item) => {
     const duration = item.targetDuration ?? Math.max(1, (item.sourceOut ?? 0) - (item.sourceIn ?? 0));
+    const passKey = item.passId ?? "unassigned";
+    const cursor = cursorsByPass.get(passKey) ?? 0;
     const clip: TimelineClip = {
       ...item,
       asset: item.assetId ? assetsById.get(item.assetId) : undefined,
@@ -464,9 +579,29 @@ export function getTimelineClips(projectId: string): TimelineClip[] {
       timelineEnd: cursor + duration,
       duration,
     };
-    cursor += duration;
+    cursorsByPass.set(passKey, cursor + duration);
     return clip;
   });
+}
+
+export function getRenderJobs(projectId: string): RenderJob[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT * FROM render_jobs
+       WHERE projectId = ?
+       ORDER BY completedAt DESC, startedAt DESC, name ASC`,
+    )
+    .all(projectId) as DbRenderJobRow[];
+
+  return rows.map((row) => ({
+    ...row,
+    passId: row.passId ?? undefined,
+    outputPath: row.outputPath ?? undefined,
+    startedAt: row.startedAt ?? undefined,
+    completedAt: row.completedAt ?? undefined,
+    command: row.command ?? undefined,
+    logPath: row.logPath ?? undefined,
+  }));
 }
 
 export function getNotes(projectId: string): Note[] {

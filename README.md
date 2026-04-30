@@ -10,6 +10,8 @@ The core idea is simple: the human marks what needs to change, the AI performs t
 - Local SQLite database at `.cut-notes/cut-notes.sqlite`
 - One active seeded project for the Piano Hand Size Part 2 workflow
 - Horizontal rough-cut timeline with clip blocks, tracks, time ruler, and thumbnails
+- Latest rendered review cut pane backed by `render_jobs`
+- Pass-specific timelines, so each AI pass can have its own visible edit decisions
 - Preview pane for the selected timeline clip, including local video playback where supported
 - Playback controls with start, pause, stop, previous/next clip, spacebar toggle, scroll-to-cursor, and follow-cursor mode
 - Pass tracker for plan, descriptors, shortlist, paper edit, assembly, and rough cut review
@@ -22,8 +24,8 @@ The core idea is simple: the human marks what needs to change, the AI performs t
 2. Select a timeline clip, scrub the playback cursor, or press start to move through the assembly.
 3. Add notes against the current pass and timeline clip.
 4. Run the next AI edit pass using the open notes as the checklist.
-5. After the edit, the AI adds `fix_log` notes describing what changed.
-6. Review the next render and keep iterating from the same database.
+5. The AI writes the new pass timeline, render job, and `fix_log` notes back to SQLite.
+6. Review the next render and matching pass timeline in the app.
 
 ## Local Development
 
@@ -51,5 +53,9 @@ The app keeps all project information under one project entry and connects relat
 - `timeline_items`: ordered edit decisions for an assembly
 - `notes`: user notes and AI fix logs
 - `render_jobs`: render commands and outputs
+
+The current workflow expects every new AI pass to write both a `render_jobs` row and
+matching `timeline_items` rows for the same `passId`. The UI uses those rows as the
+review source of truth.
 
 The SQLite file is local-only and ignored by git. Future versions can add import/export commands when a project needs to move between machines.

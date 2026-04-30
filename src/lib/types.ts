@@ -48,6 +48,8 @@ export type Project = {
     thesis?: string;
     targetRuntime?: string;
     currentPass?: string;
+    currentPassId?: string;
+    currentRenderJobId?: string;
     githubRepo?: string;
   };
 };
