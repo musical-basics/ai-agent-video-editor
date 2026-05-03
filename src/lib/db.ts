@@ -274,7 +274,7 @@ function seed(database: Database.Database) {
       noteType: "fix_log",
       body: "Example AI fix log: after changing a cut, write exactly what changed, which file/script was updated, and which render includes the fix.",
       status: "done",
-      metadata: { linkedOutput: "review_cuts/piano_hand_size_part2_rough_cut_v1.mp4" },
+      metadata: { linkedOutput: "renders/review_cuts/piano_hand_size_part2_rough_cut_v1.mp4" },
     },
   ];
 
@@ -417,11 +417,11 @@ function seedRenderJobs(database: Database.Database, projectId: string, timestam
       name: "Rough review cut v3",
       status: "done",
       outputPath:
-        "/Users/lionelyu/Music/Piano Hand Size Part 2/review_cuts/piano_hand_size_part2_rough_cut_v3.mp4",
+        "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/renders/review_cuts/piano_hand_size_part2_rough_cut_v3.mp4",
       startedAt: timestamp,
       completedAt: timestamp,
       command: "./make_rough_review_cut_v3.sh",
-      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/PASS5_V3_FIX_LOG.md",
+      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/docs/PASS5_V3_FIX_LOG.md",
     });
 
   database
@@ -439,11 +439,11 @@ function seedRenderJobs(database: Database.Database, projectId: string, timestam
       name: "Rough review cut v4",
       status: "done",
       outputPath:
-        "/Users/lionelyu/Music/Piano Hand Size Part 2/review_cuts/piano_hand_size_part2_rough_cut_v4.mp4",
+        "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/renders/review_cuts/piano_hand_size_part2_rough_cut_v4.mp4",
       startedAt: timestamp,
       completedAt: timestamp,
       command: "./make_rough_review_cut_v4.sh",
-      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/PASS7_V4_FIX_LOG.md",
+      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/docs/PASS7_V4_FIX_LOG.md",
     });
 
   database
@@ -461,11 +461,11 @@ function seedRenderJobs(database: Database.Database, projectId: string, timestam
       name: "Rough review cut v5",
       status: "done",
       outputPath:
-        "/Users/lionelyu/Music/Piano Hand Size Part 2/review_cuts/piano_hand_size_part2_rough_cut_v5.mp4",
+        "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/renders/review_cuts/piano_hand_size_part2_rough_cut_v5.mp4",
       startedAt: timestamp,
       completedAt: timestamp,
       command: "./make_rough_review_cut_v5.sh",
-      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/PASS8_V5_VO_MUSIC_LOG.md",
+      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/docs/PASS8_V5_VO_MUSIC_LOG.md",
     });
 }
 
@@ -522,17 +522,17 @@ function thumbnailPathForSource(source: string) {
   }
 
   if (source === "technical-keyboard-stills") {
-    return "04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG";
+    return "footage/04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG";
   }
 
   if (source === "055_PICKUP_front_facing_intro.MOV") {
-    return "90_Reference_Frames/055_PICKUP_front_facing_intro.jpg";
+    return "footage/90_Reference_Frames/055_PICKUP_front_facing_intro.jpg";
   }
 
   const match = source.match(/IMG_(\d{4})/);
   if (!match) return undefined;
 
-  return `90_Reference_Frames/IMG_${match[1]}.jpg`;
+  return `footage/90_Reference_Frames/IMG_${match[1]}.jpg`;
 }
 
 function originalIdForSource(source: string) {

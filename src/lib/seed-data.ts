@@ -1,72 +1,72 @@
 import type { TimelineRole } from "./types";
 
 export const pianoProjectRoot =
-  "/Users/lionelyu/Music/Piano Hand Size Part 2";
+  "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip";
 
 export const sourceRelativePaths: Record<string, string> = {
   "001_IMG_0256_0142am_trip_setup.MOV":
-    "01_Trip_Setup/001_IMG_0256_0142am_trip_setup.MOV",
+    "footage/01_Trip_Setup/001_IMG_0256_0142am_trip_setup.MOV",
   "002_IMG_0257_hagerstown_gas_station.MOV":
-    "01_Trip_Setup/002_IMG_0257_hagerstown_gas_station.MOV",
+    "footage/01_Trip_Setup/002_IMG_0257_hagerstown_gas_station.MOV",
   "003_IMG_0258_road_trip_snacks_no_caffeine.MOV":
-    "01_Trip_Setup/003_IMG_0258_road_trip_snacks_no_caffeine.MOV",
+    "footage/01_Trip_Setup/003_IMG_0258_road_trip_snacks_no_caffeine.MOV",
   "004_IMG_0259_sheets_stop_middle_of_nowhere.MOV":
-    "01_Trip_Setup/004_IMG_0259_sheets_stop_middle_of_nowhere.MOV",
+    "footage/01_Trip_Setup/004_IMG_0259_sheets_stop_middle_of_nowhere.MOV",
   "005_IMG_0260_waking_up_after_car_nap.MOV":
-    "01_Trip_Setup/005_IMG_0260_waking_up_after_car_nap.MOV",
+    "footage/01_Trip_Setup/005_IMG_0260_waking_up_after_car_nap.MOV",
   "006_IMG_0261_car_nap_recovery_drive_resumes.MOV":
-    "01_Trip_Setup/006_IMG_0261_car_nap_recovery_drive_resumes.MOV",
+    "footage/01_Trip_Setup/006_IMG_0261_car_nap_recovery_drive_resumes.MOV",
   "007_IMG_0263_morning_highway_update.MOV":
-    "02_Drive_To_Titusville/007_IMG_0263_morning_highway_update.MOV",
+    "footage/02_Drive_To_Titusville/007_IMG_0263_morning_highway_update.MOV",
   "008_IMG_0264_pennsylvania_scenery.MOV":
-    "02_Drive_To_Titusville/008_IMG_0264_pennsylvania_scenery.MOV",
+    "footage/02_Drive_To_Titusville/008_IMG_0264_pennsylvania_scenery.MOV",
   "009_IMG_0265_drive_broll_1.MOV":
-    "02_Drive_To_Titusville/009_IMG_0265_drive_broll_1.MOV",
+    "footage/02_Drive_To_Titusville/009_IMG_0265_drive_broll_1.MOV",
   "010_IMG_0266_drive_broll_2.MOV":
-    "02_Drive_To_Titusville/010_IMG_0266_drive_broll_2.MOV",
+    "footage/02_Drive_To_Titusville/010_IMG_0266_drive_broll_2.MOV",
   "011_IMG_0267_in_the_woods_almost_there.MOV":
-    "02_Drive_To_Titusville/011_IMG_0267_in_the_woods_almost_there.MOV",
+    "footage/02_Drive_To_Titusville/011_IMG_0267_in_the_woods_almost_there.MOV",
   "012_IMG_0268_double_big_mac_lunch.MOV":
-    "02_Drive_To_Titusville/012_IMG_0268_double_big_mac_lunch.MOV",
+    "footage/02_Drive_To_Titusville/012_IMG_0268_double_big_mac_lunch.MOV",
   "013_IMG_0269_keyboard_21_intro.MOV":
-    "03_David_Factory_Visit/013_IMG_0269_keyboard_21_intro.MOV",
+    "footage/03_David_Factory_Visit/013_IMG_0269_keyboard_21_intro.MOV",
   "018_IMG_0274_ds_size_lineup_on_steinway.MOV":
-    "03_David_Factory_Visit/018_IMG_0274_ds_size_lineup_on_steinway.MOV",
+    "footage/03_David_Factory_Visit/018_IMG_0274_ds_size_lineup_on_steinway.MOV",
   "019_IMG_0275_ds55_pickup_and_wrap.MOV":
-    "03_David_Factory_Visit/019_IMG_0275_ds55_pickup_and_wrap.MOV",
+    "footage/03_David_Factory_Visit/019_IMG_0275_ds55_pickup_and_wrap.MOV",
   "027_IMG_0283_athena_internals_reconnaissance.MOV":
-    "03_David_Factory_Visit/027_IMG_0283_athena_internals_reconnaissance.MOV",
+    "footage/03_David_Factory_Visit/027_IMG_0283_athena_internals_reconnaissance.MOV",
   "041_IMG_0297_ds60_ds55_car_monologue.MOV":
-    "05_Post_Pickup_Main_Argument/041_IMG_0297_ds60_ds55_car_monologue.MOV",
+    "footage/05_Post_Pickup_Main_Argument/041_IMG_0297_ds60_ds55_car_monologue.MOV",
   "042_IMG_0298_tionesta_lake_cutaway.MOV":
-    "05_Post_Pickup_Main_Argument/042_IMG_0298_tionesta_lake_cutaway.MOV",
+    "footage/05_Post_Pickup_Main_Argument/042_IMG_0298_tionesta_lake_cutaway.MOV",
   "043_IMG_0299_lake_overlook_broll.MOV":
-    "05_Post_Pickup_Main_Argument/043_IMG_0299_lake_overlook_broll.MOV",
+    "footage/05_Post_Pickup_Main_Argument/043_IMG_0299_lake_overlook_broll.MOV",
   "044_IMG_0300_177777_mileage.MOV":
-    "05_Post_Pickup_Main_Argument/044_IMG_0300_177777_mileage.MOV",
+    "footage/05_Post_Pickup_Main_Argument/044_IMG_0300_177777_mileage.MOV",
   "048_IMG_0304_hotel_car_broke_down.MOV":
-    "06_Car_Trouble_Return/048_IMG_0304_hotel_car_broke_down.MOV",
+    "footage/06_Car_Trouble_Return/048_IMG_0304_hotel_car_broke_down.MOV",
   "049_IMG_0305_car_fixed_heading_home.MOV":
-    "06_Car_Trouble_Return/049_IMG_0305_car_fixed_heading_home.MOV",
+    "footage/06_Car_Trouble_Return/049_IMG_0305_car_fixed_heading_home.MOV",
   "050_IMG_0306_beautiful_return_drive.MOV":
-    "06_Car_Trouble_Return/050_IMG_0306_beautiful_return_drive.MOV",
+    "footage/06_Car_Trouble_Return/050_IMG_0306_beautiful_return_drive.MOV",
   "053_IMG_0309_highway_home_broll.MOV":
-    "06_Car_Trouble_Return/053_IMG_0309_highway_home_broll.MOV",
+    "footage/06_Car_Trouble_Return/053_IMG_0309_highway_home_broll.MOV",
   "054_IMG_0310_home_ds60_ds55_explanation.MOV":
-    "07_Home_Demo_Payoff/054_IMG_0310_home_ds60_ds55_explanation.MOV",
+    "footage/07_Home_Demo_Payoff/054_IMG_0310_home_ds60_ds55_explanation.MOV",
   "055_PICKUP_front_facing_intro.MOV":
-    "08_Pickups_To_Record/055_PICKUP_front_facing_intro.MOV",
+    "footage/08_Pickups_To_Record/055_PICKUP_front_facing_intro.MOV",
   "056_PICKUP_hand_key_comparison.MOV":
-    "08_Pickups_To_Record/056_PICKUP_hand_key_comparison.MOV",
+    "footage/08_Pickups_To_Record/056_PICKUP_hand_key_comparison.MOV",
   "technical-keyboard-stills":
-    "04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG",
-  "VO_01_late_night_drive.wav": "voiceovers/VO_01_late_night_drive.wav",
-  "VO_02_gas_station_and_snacks.wav": "voiceovers/VO_02_gas_station_and_snacks.wav",
-  "VO_03_car_nap.wav": "voiceovers/VO_03_car_nap.wav",
-  "VO_04_pennsylvania_road.wav": "voiceovers/VO_04_pennsylvania_road.wav",
-  "VO_05_lake_pause.wav": "voiceovers/VO_05_lake_pause.wav",
-  "VO_06_breakdown_and_return.wav": "voiceovers/VO_06_breakdown_and_return.wav",
-  "pass8_travel_bed.wav": "music/pass8_travel_bed.wav",
+    "footage/04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG",
+  "VO_01_late_night_drive.wav": "audio/voiceovers/VO_01_late_night_drive.wav",
+  "VO_02_gas_station_and_snacks.wav": "audio/voiceovers/VO_02_gas_station_and_snacks.wav",
+  "VO_03_car_nap.wav": "audio/voiceovers/VO_03_car_nap.wav",
+  "VO_04_pennsylvania_road.wav": "audio/voiceovers/VO_04_pennsylvania_road.wav",
+  "VO_05_lake_pause.wav": "audio/voiceovers/VO_05_lake_pause.wav",
+  "VO_06_breakdown_and_return.wav": "audio/voiceovers/VO_06_breakdown_and_return.wav",
+  "pass8_travel_bed.wav": "audio/music/pass8_travel_bed.wav",
 };
 
 export type SeedTimelineItem = {
@@ -598,7 +598,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-006-vo01-late-night-still",
-    source: "90_Reference_Frames/IMG_0256.jpg",
+    source: "footage/90_Reference_Frames/IMG_0256.jpg",
     section: "VO 01 Late-Night Drive",
     targetDuration: 4,
     role: "still",
@@ -606,7 +606,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-007-vo01-technical-still",
-    source: "04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG",
+    source: "footage/04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG",
     section: "VO 01 Late-Night Drive",
     targetDuration: 5,
     role: "still",
@@ -658,7 +658,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-012-vo02-snack-still",
-    source: "90_Reference_Frames/IMG_0258.jpg",
+    source: "footage/90_Reference_Frames/IMG_0258.jpg",
     section: "VO 02 Gas Station",
     targetDuration: 3,
     role: "still",
@@ -676,7 +676,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-014-vo02-car-nap-still",
-    source: "90_Reference_Frames/IMG_0260.jpg",
+    source: "footage/90_Reference_Frames/IMG_0260.jpg",
     section: "VO 02 Gas Station",
     targetDuration: 3,
     role: "still",
@@ -734,7 +734,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-020-vo03-nap-still",
-    source: "90_Reference_Frames/IMG_0260.jpg",
+    source: "footage/90_Reference_Frames/IMG_0260.jpg",
     section: "VO 03 Car Nap",
     targetDuration: 3,
     role: "still",
@@ -742,7 +742,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-021-vo03-recovery-still",
-    source: "90_Reference_Frames/IMG_0261.jpg",
+    source: "footage/90_Reference_Frames/IMG_0261.jpg",
     section: "VO 03 Car Nap",
     targetDuration: 3,
     role: "still",
@@ -790,7 +790,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-026-vo04-woods-still",
-    source: "90_Reference_Frames/IMG_0267.jpg",
+    source: "footage/90_Reference_Frames/IMG_0267.jpg",
     section: "VO 04 Pennsylvania Road",
     targetDuration: 5,
     role: "still",
@@ -913,7 +913,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-038-technical-still-030",
-    source: "04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG",
+    source: "footage/04_Keyboards_Technical_Stills/030_IMG_0286_technical_keyboard_still.JPG",
     section: "Factory",
     targetDuration: 3,
     role: "still",
@@ -922,7 +922,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-039-technical-still-031",
-    source: "04_Keyboards_Technical_Stills/031_IMG_0287_technical_keyboard_still.JPG",
+    source: "footage/04_Keyboards_Technical_Stills/031_IMG_0287_technical_keyboard_still.JPG",
     section: "Factory",
     targetDuration: 3,
     role: "still",
@@ -931,7 +931,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-040-technical-still-032",
-    source: "04_Keyboards_Technical_Stills/032_IMG_0288_technical_keyboard_still.JPG",
+    source: "footage/04_Keyboards_Technical_Stills/032_IMG_0288_technical_keyboard_still.JPG",
     section: "Factory",
     targetDuration: 3,
     role: "still",
@@ -1039,7 +1039,7 @@ export const pass6TimelineSeed: SeedTimelineItem[] = [
   },
   {
     id: "p6-051-vo06-breakdown-still",
-    source: "90_Reference_Frames/IMG_0304.jpg",
+    source: "footage/90_Reference_Frames/IMG_0304.jpg",
     section: "VO 06 Return",
     targetDuration: 4,
     role: "still",
@@ -1263,7 +1263,7 @@ export const pass7TimelineSeed: SeedTimelineItem[] = pass6TimelineSeed.flatMap((
         },
         {
           id: "p7-049b-vo05-mileage-hold",
-          source: "90_Reference_Frames/IMG_0300.jpg",
+          source: "footage/90_Reference_Frames/IMG_0300.jpg",
           section: item.section,
           targetDuration: 2,
           role: "still",
