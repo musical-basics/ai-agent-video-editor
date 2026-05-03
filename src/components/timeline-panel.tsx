@@ -1,10 +1,20 @@
 "use client";
 
-import { useEffect, useRef, type CSSProperties, type MouseEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type MouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { MessageSquareText } from "lucide-react";
 import type { Note, TimelineClip, TimelineRole } from "@/lib/types";
 
 const pxPerSecond = 7;
+const SNAP_PIXELS = 6;
+const LANE_HEIGHT = 56;
+
 const laneOrder: Array<{ role: TimelineRole; label: string }> = [
   { role: "title_card", label: "title" },
   { role: "voiceover", label: "voiceover" },
@@ -16,6 +26,14 @@ const laneOrder: Array<{ role: TimelineRole; label: string }> = [
   { role: "placeholder", label: "pickup" },
 ];
 
+const roleIndex: Record<TimelineRole, number> = laneOrder.reduce(
+  (acc, lane, idx) => {
+    acc[lane.role] = idx;
+    return acc;
+  },
+  {} as Record<TimelineRole, number>,
+);
+
 const clipBase: Record<TimelineRole, string> = {
   a_roll: "bg-blue-700 border-blue-500 text-blue-50",
   b_roll: "bg-teal-800 border-teal-600 text-teal-50",
@@ -24,8 +42,7 @@ const clipBase: Record<TimelineRole, string> = {
   voiceover: "bg-rose-800 border-rose-500 text-rose-50",
   music: "bg-lime-900 border-lime-600 text-lime-50",
   still: "bg-amber-800 border-amber-600 text-amber-50",
-  placeholder:
-    "bg-neutral-800 border-dashed border-neutral-600 text-neutral-300",
+  placeholder: "bg-neutral-800 border-dashed border-neutral-600 text-neutral-300",
 };
 
 const clipSelected: Record<TimelineRole, string> = {
@@ -62,12 +79,7 @@ function mediaUrl(pathValue: unknown) {
 }
 
 function clipLabel(clip: TimelineClip) {
-  return (
-    clip.asset?.originalId ??
-    clip.asset?.basename ??
-    clip.textOverlay ??
-    clip.section
-  );
+  return clip.asset?.originalId ?? clip.asset?.basename ?? clip.textOverlay ?? clip.section;
 }
 
 function clipRotation(clip: TimelineClip) {
@@ -89,6 +101,26 @@ function rotatedThumbnailStyle(rotation: number, thumbnail: string): CSSProperti
   };
 }
 
+export type ClipPatch = {
+  timelineStart?: number;
+  sourceIn?: number;
+  sourceOut?: number;
+  targetDuration?: number;
+  role?: TimelineRole;
+};
+
+type DragMode = "move" | "trim-left" | "trim-right";
+
+type DragState = {
+  clipId: string;
+  mode: DragMode;
+  startPointerX: number;
+  startPointerY: number;
+  startClip: TimelineClip;
+  /** Snap target pixel positions (master timeline coords) */
+  snapTargets: number[];
+};
+
 export function TimelinePanel({
   clips,
   notes,
@@ -96,8 +128,11 @@ export function TimelinePanel({
   playheadTime = 0,
   followPlayhead = false,
   scrollSignal = 0,
+  editable = true,
   onSelectClip,
   onSeek,
+  onClipPreview,
+  onClipCommit,
 }: {
   clips: TimelineClip[];
   notes: Note[];
@@ -105,11 +140,16 @@ export function TimelinePanel({
   playheadTime?: number;
   followPlayhead?: boolean;
   scrollSignal?: number;
+  editable?: boolean;
   onSelectClip?: (clipId: string) => void;
   onSeek?: (time: number) => void;
+  onClipPreview?: (clipId: string, patch: ClipPatch) => void;
+  onClipCommit?: (clipId: string, patch: ClipPatch) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const lastScrollSignal = useRef(scrollSignal);
+  const dragRef = useRef<DragState | null>(null);
+  const [hoverDrag, setHoverDrag] = useState(false);
   const totalSeconds = Math.ceil(
     Math.max(60, ...clips.map((clip) => clip.timelineEnd)) / 15,
   ) * 15;
@@ -163,9 +203,174 @@ export function TimelinePanel({
 
   function seekFromMouse(event: MouseEvent<HTMLDivElement>) {
     if (!onSeek) return;
+    if (dragRef.current) return;
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
     onSeek(Math.max(0, x / pxPerSecond));
+  }
+
+  function buildSnapTargets(excludeId: string): number[] {
+    const targets: number[] = [0, playheadTime];
+    for (const c of clips) {
+      if (c.id === excludeId) continue;
+      targets.push(c.timelineStart, c.timelineEnd);
+    }
+    return targets;
+  }
+
+  function snap(value: number, targets: number[]): number {
+    let bestDelta = SNAP_PIXELS / pxPerSecond;
+    let snapped = value;
+    for (const target of targets) {
+      const delta = Math.abs(value - target);
+      if (delta < bestDelta) {
+        bestDelta = delta;
+        snapped = target;
+      }
+    }
+    return snapped;
+  }
+
+  function laneFromPointerY(absoluteY: number): TimelineRole | undefined {
+    const scroller = scrollRef.current;
+    if (!scroller) return undefined;
+    const scrollerRect = scroller.getBoundingClientRect();
+    // Subtract ruler height (24px) + scroller top
+    const relativeY = absoluteY - scrollerRect.top - 24;
+    const laneIndex = Math.floor(relativeY / LANE_HEIGHT);
+    return laneOrder[laneIndex]?.role;
+  }
+
+  function handleClipPointerDown(
+    event: ReactPointerEvent<HTMLElement>,
+    clip: TimelineClip,
+    mode: DragMode,
+  ) {
+    if (!editable) return;
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    event.preventDefault();
+    onSelectClip?.(clip.id);
+
+    dragRef.current = {
+      clipId: clip.id,
+      mode,
+      startPointerX: event.clientX,
+      startPointerY: event.clientY,
+      startClip: clip,
+      snapTargets: buildSnapTargets(clip.id),
+    };
+    setHoverDrag(true);
+
+    const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+
+    function onMove(e: PointerEvent) {
+      const drag = dragRef.current;
+      if (!drag) return;
+      const deltaPx = e.clientX - drag.startPointerX;
+      const deltaTime = deltaPx / pxPerSecond;
+      const start = drag.startClip;
+      const startDuration = start.duration;
+
+      if (drag.mode === "move") {
+        let nextStart = Math.max(0, start.timelineStart + deltaTime);
+        nextStart = Math.max(0, snap(nextStart, drag.snapTargets));
+        const nextRole = laneFromPointerY(e.clientY) ?? start.role;
+        onClipPreview?.(drag.clipId, {
+          timelineStart: nextStart,
+          role: nextRole,
+        });
+      } else if (drag.mode === "trim-left") {
+        // Drag left edge: changes timelineStart, sourceIn, duration; right edge fixed
+        const rightEdge = start.timelineStart + startDuration;
+        let nextStart = Math.max(0, start.timelineStart + deltaTime);
+        nextStart = snap(nextStart, drag.snapTargets);
+        nextStart = Math.min(nextStart, rightEdge - 0.2);
+        const startShift = nextStart - start.timelineStart;
+        const nextSourceIn = Math.max(0, (start.sourceIn ?? 0) + startShift);
+        const nextDuration = Math.max(0.2, startDuration - startShift);
+        onClipPreview?.(drag.clipId, {
+          timelineStart: nextStart,
+          sourceIn: nextSourceIn,
+          targetDuration: nextDuration,
+        });
+      } else if (drag.mode === "trim-right") {
+        // Drag right edge: changes duration and sourceOut; left edge fixed
+        const leftEdge = start.timelineStart;
+        let nextRight = Math.max(leftEdge + 0.2, leftEdge + startDuration + deltaTime);
+        nextRight = snap(nextRight, drag.snapTargets);
+        nextRight = Math.max(nextRight, leftEdge + 0.2);
+        const nextDuration = nextRight - leftEdge;
+        const nextSourceOut =
+          start.sourceOut !== undefined
+            ? (start.sourceIn ?? 0) + nextDuration
+            : undefined;
+        const patch: ClipPatch = { targetDuration: nextDuration };
+        if (nextSourceOut !== undefined) patch.sourceOut = nextSourceOut;
+        onClipPreview?.(drag.clipId, patch);
+      }
+    }
+
+    function onUp(e: PointerEvent) {
+      const drag = dragRef.current;
+      if (!drag) {
+        cleanup();
+        return;
+      }
+      // Replay one final move to settle
+      onMove(e);
+      const deltaPx = Math.abs(e.clientX - drag.startPointerX);
+      const deltaY = Math.abs(e.clientY - drag.startPointerY);
+      const wasDrag = deltaPx > 2 || deltaY > 2;
+      if (wasDrag) {
+        // Use the last preview values by re-deriving them
+        const deltaTime = (e.clientX - drag.startPointerX) / pxPerSecond;
+        const start = drag.startClip;
+        const patch: ClipPatch = {};
+        if (drag.mode === "move") {
+          let nextStart = Math.max(0, start.timelineStart + deltaTime);
+          nextStart = Math.max(0, snap(nextStart, drag.snapTargets));
+          patch.timelineStart = nextStart;
+          const nextRole = laneFromPointerY(e.clientY) ?? start.role;
+          if (nextRole !== start.role) patch.role = nextRole;
+        } else if (drag.mode === "trim-left") {
+          const rightEdge = start.timelineStart + start.duration;
+          let nextStart = Math.max(0, start.timelineStart + deltaTime);
+          nextStart = snap(nextStart, drag.snapTargets);
+          nextStart = Math.min(nextStart, rightEdge - 0.2);
+          const startShift = nextStart - start.timelineStart;
+          patch.timelineStart = nextStart;
+          patch.sourceIn = Math.max(0, (start.sourceIn ?? 0) + startShift);
+          patch.targetDuration = Math.max(0.2, start.duration - startShift);
+        } else if (drag.mode === "trim-right") {
+          const leftEdge = start.timelineStart;
+          let nextRight = Math.max(leftEdge + 0.2, leftEdge + start.duration + deltaTime);
+          nextRight = snap(nextRight, drag.snapTargets);
+          nextRight = Math.max(nextRight, leftEdge + 0.2);
+          const nextDuration = nextRight - leftEdge;
+          patch.targetDuration = nextDuration;
+          if (start.sourceOut !== undefined) {
+            patch.sourceOut = (start.sourceIn ?? 0) + nextDuration;
+          }
+        }
+        onClipCommit?.(drag.clipId, patch);
+      }
+      cleanup();
+    }
+
+    function cleanup() {
+      dragRef.current = null;
+      setHoverDrag(false);
+      target.releasePointerCapture?.(event.pointerId);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", cleanup);
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", cleanup);
   }
 
   const playheadLeft = `${playheadTime * pxPerSecond}px`;
@@ -174,7 +379,7 @@ export function TimelinePanel({
     <section className="min-w-0 max-w-full overflow-hidden border-y border-neutral-800 bg-neutral-950">
       <div ref={scrollRef} className="w-full max-w-full overflow-x-auto overscroll-x-contain">
         <div
-          className="grid"
+          className="grid select-none"
           style={{
             gridTemplateColumns: "92px 1fr",
             width: `${timelineWidth + 92}px`,
@@ -239,17 +444,38 @@ export function TimelinePanel({
                       <button
                         key={clip.id}
                         type="button"
+                        onPointerDown={(event) =>
+                          handleClipPointerDown(event, clip, "move")
+                        }
                         onClick={(event) => {
                           event.stopPropagation();
                           onSelectClip?.(clip.id);
                         }}
-                        className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass}`}
+                        className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass} ${editable ? "cursor-grab active:cursor-grabbing" : ""}`}
                         style={{
                           left: `${clip.timelineStart * pxPerSecond}px`,
                           width: `${width}px`,
                         }}
                         title={`${clipLabel(clip)} | ${formatTime(clip.timelineStart)}-${formatTime(clip.timelineEnd)} | ${clip.notes ?? ""}`}
                       >
+                        {editable ? (
+                          <span
+                            className="absolute inset-y-0 left-0 z-10 w-[7px] cursor-ew-resize bg-black/20 hover:bg-white/30"
+                            onPointerDown={(event) =>
+                              handleClipPointerDown(event, clip, "trim-left")
+                            }
+                            aria-hidden="true"
+                          />
+                        ) : null}
+                        {editable ? (
+                          <span
+                            className="absolute inset-y-0 right-0 z-10 w-[7px] cursor-ew-resize bg-black/20 hover:bg-white/30"
+                            onPointerDown={(event) =>
+                              handleClipPointerDown(event, clip, "trim-right")
+                            }
+                            aria-hidden="true"
+                          />
+                        ) : null}
                         <div className="flex items-center gap-1 px-1.5 py-0.5">
                           <span className="truncate text-[10px] font-semibold leading-tight text-white/90">
                             {clipLabel(clip)}
@@ -300,7 +526,18 @@ export function TimelinePanel({
             {lane.label}
           </span>
         ))}
+        {editable ? (
+          <span className="ml-auto text-neutral-600">
+            {hoverDrag ? "dragging…" : "drag clip body to move · drag edges to trim · drop on another lane to change role"}
+          </span>
+        ) : (
+          <span className="ml-auto text-amber-500/80">
+            historical pass — switch to current pass to edit
+          </span>
+        )}
       </div>
     </section>
   );
 }
+
+export { roleIndex, laneOrder };

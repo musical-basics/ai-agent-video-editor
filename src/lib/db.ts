@@ -699,6 +699,190 @@ export function getTimelineClips(projectId: string, passId?: string): TimelineCl
   });
 }
 
+export type TimelineItemPatch = {
+  timelineStart?: number | null;
+  sourceIn?: number | null;
+  sourceOut?: number | null;
+  targetDuration?: number | null;
+  role?: TimelineItem["role"];
+  rotationOverride?: TimelineItem["rotationOverride"] | null;
+  textOverlay?: string | null;
+  enabled?: boolean;
+  notes?: string | null;
+  order?: number;
+  section?: string;
+};
+
+const PATCH_COLUMNS: Record<keyof TimelineItemPatch, string> = {
+  timelineStart: "timelineStart",
+  sourceIn: "sourceIn",
+  sourceOut: "sourceOut",
+  targetDuration: "targetDuration",
+  role: "role",
+  rotationOverride: "rotationOverride",
+  textOverlay: "textOverlay",
+  enabled: "enabled",
+  notes: "notes",
+  order: '"order"',
+  section: "section",
+};
+
+export function updateTimelineItem(
+  projectId: string,
+  itemId: string,
+  patch: TimelineItemPatch,
+): TimelineItem | undefined {
+  const database = getDb();
+  const fields = Object.keys(patch) as Array<keyof TimelineItemPatch>;
+  if (fields.length === 0) return getTimelineItemById(projectId, itemId);
+
+  const assignments = fields.map((field) => `${PATCH_COLUMNS[field]} = @${field}`).join(", ");
+  const params: Record<string, unknown> = { id: itemId, projectId };
+  for (const field of fields) {
+    const value = patch[field];
+    if (field === "enabled") {
+      params[field] = value ? 1 : 0;
+    } else {
+      params[field] = value === undefined ? null : value;
+    }
+  }
+
+  database
+    .prepare(`UPDATE timeline_items SET ${assignments} WHERE id = @id AND projectId = @projectId`)
+    .run(params);
+
+  return getTimelineItemById(projectId, itemId);
+}
+
+export function getTimelineItemById(projectId: string, itemId: string): TimelineItem | undefined {
+  const row = getDb()
+    .prepare("SELECT * FROM timeline_items WHERE id = ? AND projectId = ?")
+    .get(itemId, projectId) as DbTimelineItemRow | undefined;
+  if (!row) return undefined;
+  return {
+    ...row,
+    assetId: row.assetId ?? undefined,
+    passId: row.passId ?? undefined,
+    timelineStart: row.timelineStart ?? undefined,
+    sourceIn: row.sourceIn ?? undefined,
+    sourceOut: row.sourceOut ?? undefined,
+    targetDuration: row.targetDuration ?? undefined,
+    enabled: Boolean(row.enabled),
+    rotationOverride: row.rotationOverride ?? undefined,
+    textOverlay: row.textOverlay ?? undefined,
+    notes: row.notes ?? undefined,
+  };
+}
+
+export function deleteTimelineItem(projectId: string, itemId: string) {
+  return updateTimelineItem(projectId, itemId, { enabled: false });
+}
+
+export function restoreTimelineItem(projectId: string, itemId: string) {
+  return updateTimelineItem(projectId, itemId, { enabled: true });
+}
+
+export function duplicateTimelineItem(projectId: string, itemId: string): TimelineItem | undefined {
+  const source = getTimelineItemById(projectId, itemId);
+  if (!source) return undefined;
+  const newId = randomUUID();
+  const duration =
+    source.targetDuration ?? Math.max(1, (source.sourceOut ?? 0) - (source.sourceIn ?? 0));
+  const offset = duration;
+  getDb()
+    .prepare(
+      `INSERT INTO timeline_items (
+        id, projectId, assetId, passId, section, "order", timelineStart, sourceIn, sourceOut,
+        targetDuration, role, enabled, rotationOverride, textOverlay, notes
+      ) VALUES (
+        @id, @projectId, @assetId, @passId, @section, @order, @timelineStart, @sourceIn, @sourceOut,
+        @targetDuration, @role, @enabled, @rotationOverride, @textOverlay, @notes
+      )`,
+    )
+    .run({
+      id: newId,
+      projectId,
+      assetId: source.assetId ?? null,
+      passId: source.passId ?? null,
+      section: source.section,
+      order: source.order + 1,
+      timelineStart:
+        source.timelineStart !== undefined ? source.timelineStart + offset : null,
+      sourceIn: source.sourceIn ?? null,
+      sourceOut: source.sourceOut ?? null,
+      targetDuration: source.targetDuration ?? null,
+      role: source.role,
+      enabled: source.enabled ? 1 : 0,
+      rotationOverride: source.rotationOverride ?? null,
+      textOverlay: source.textOverlay ?? null,
+      notes: source.notes ?? null,
+    });
+  return getTimelineItemById(projectId, newId);
+}
+
+export function splitTimelineItem(
+  projectId: string,
+  itemId: string,
+  splitAtMasterTime: number,
+): { left: TimelineItem; right: TimelineItem } | undefined {
+  const source = getTimelineItemById(projectId, itemId);
+  if (!source) return undefined;
+
+  const start = source.timelineStart ?? 0;
+  const duration =
+    source.targetDuration ?? Math.max(1, (source.sourceOut ?? 0) - (source.sourceIn ?? 0));
+  const end = start + duration;
+
+  // Require split point to be strictly inside the clip with at least 0.1s on each side
+  if (splitAtMasterTime <= start + 0.1 || splitAtMasterTime >= end - 0.1) {
+    return undefined;
+  }
+
+  const offsetIntoClip = splitAtMasterTime - start;
+  const sourceIn = source.sourceIn ?? 0;
+  const splitInSource = sourceIn + offsetIntoClip;
+
+  // Update left half: keep id, shorten
+  updateTimelineItem(projectId, itemId, {
+    sourceOut: splitInSource,
+    targetDuration: offsetIntoClip,
+  });
+
+  // Insert right half
+  const rightId = randomUUID();
+  getDb()
+    .prepare(
+      `INSERT INTO timeline_items (
+        id, projectId, assetId, passId, section, "order", timelineStart, sourceIn, sourceOut,
+        targetDuration, role, enabled, rotationOverride, textOverlay, notes
+      ) VALUES (
+        @id, @projectId, @assetId, @passId, @section, @order, @timelineStart, @sourceIn, @sourceOut,
+        @targetDuration, @role, @enabled, @rotationOverride, @textOverlay, @notes
+      )`,
+    )
+    .run({
+      id: rightId,
+      projectId,
+      assetId: source.assetId ?? null,
+      passId: source.passId ?? null,
+      section: source.section,
+      order: source.order + 1,
+      timelineStart: splitAtMasterTime,
+      sourceIn: splitInSource,
+      sourceOut: source.sourceOut ?? null,
+      targetDuration: duration - offsetIntoClip,
+      role: source.role,
+      enabled: source.enabled ? 1 : 0,
+      rotationOverride: source.rotationOverride ?? null,
+      textOverlay: source.textOverlay ?? null,
+      notes: source.notes ?? null,
+    });
+
+  const left = getTimelineItemById(projectId, itemId)!;
+  const right = getTimelineItemById(projectId, rightId)!;
+  return { left, right };
+}
+
 export function getRenderJobs(projectId: string): RenderJob[] {
   const rows = getDb()
     .prepare(

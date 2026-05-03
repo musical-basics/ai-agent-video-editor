@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -15,9 +16,11 @@ import {
   ArrowUpToLine,
   BadgeAlert,
   Clapperboard,
+  Copy,
   LocateFixed,
   Pause,
   Play,
+  Redo2,
   RotateCcw,
   RotateCw,
   Save,
@@ -25,11 +28,27 @@ import {
   SkipBack,
   SkipForward,
   Square,
+  Trash2,
+  Undo2,
   type LucideIcon,
 } from "lucide-react";
-import { createNote } from "@/app/actions";
-import { TimelinePanel } from "@/components/timeline-panel";
-import type { Note, NoteType, Pass, Project, RenderJob, TimelineClip } from "@/lib/types";
+import {
+  createNote,
+  deleteTimelineClipAction,
+  duplicateTimelineClipAction,
+  splitTimelineClipAction,
+  updateTimelineClipAction,
+} from "@/app/actions";
+import { TimelinePanel, type ClipPatch } from "@/components/timeline-panel";
+import type {
+  Note,
+  NoteType,
+  Pass,
+  Project,
+  RenderJob,
+  TimelineClip,
+  TimelineRole,
+} from "@/lib/types";
 
 type QuickAction = {
   label: string;
@@ -72,39 +91,44 @@ const roleBadge: Record<string, string> = {
   placeholder: "bg-neutral-800 text-neutral-400",
 };
 
+const roleOptions: TimelineRole[] = [
+  "a_roll",
+  "b_roll",
+  "ambient",
+  "title_card",
+  "placeholder",
+  "still",
+  "voiceover",
+  "music",
+];
+
 const quickActions: QuickAction[] = [
   {
-    label: "Rotate CW",
+    label: "Note: rotate CW",
     icon: RotateCw,
     noteType: "rotation",
     body: (clip) => `${clipName(clip)}: rotate this clip 90 degrees clockwise.`,
   },
   {
-    label: "Rotate CCW",
+    label: "Note: rotate CCW",
     icon: RotateCcw,
     noteType: "rotation",
     body: (clip) => `${clipName(clip)}: rotate this clip 90 degrees counterclockwise.`,
   },
   {
-    label: "Trim",
-    icon: Scissors,
-    noteType: "trim",
-    body: (clip) => `${clipName(clip)}: trim this clip. Note exact start/end points here.`,
-  },
-  {
-    label: "Move Earlier",
+    label: "Note: move earlier",
     icon: ArrowUpToLine,
     noteType: "reorder",
     body: (clip) => `${clipName(clip)}: move this clip earlier in the sequence.`,
   },
   {
-    label: "Move Later",
+    label: "Note: move later",
     icon: ArrowDownToLine,
     noteType: "reorder",
     body: (clip) => `${clipName(clip)}: move this clip later in the sequence.`,
   },
   {
-    label: "Issue",
+    label: "Note: issue",
     icon: BadgeAlert,
     noteType: "issue",
     body: (clip) => `${clipName(clip)}: investigate this clip. Describe the problem here.`,
@@ -168,6 +192,40 @@ function rotatedMediaStyle(rotation: number): CSSProperties {
   };
 }
 
+function applyPatchToClip(clip: TimelineClip, patch: ClipPatch): TimelineClip {
+  const next: TimelineClip = { ...clip };
+  if (patch.timelineStart !== undefined) {
+    next.timelineStart = Math.max(0, patch.timelineStart);
+  }
+  if (patch.sourceIn !== undefined) next.sourceIn = patch.sourceIn;
+  if (patch.sourceOut !== undefined) next.sourceOut = patch.sourceOut;
+  if (patch.targetDuration !== undefined) next.targetDuration = patch.targetDuration;
+  if (patch.role !== undefined) next.role = patch.role;
+  next.duration =
+    patch.targetDuration ??
+    next.targetDuration ??
+    Math.max(0.2, (next.sourceOut ?? 0) - (next.sourceIn ?? 0)) ??
+    next.duration;
+  next.timelineEnd = next.timelineStart + next.duration;
+  return next;
+}
+
+function patchFromClip(clip: TimelineClip): ClipPatch {
+  return {
+    timelineStart: clip.timelineStart,
+    sourceIn: clip.sourceIn,
+    sourceOut: clip.sourceOut,
+    targetDuration: clip.targetDuration,
+    role: clip.role,
+  };
+}
+
+type HistoryEntry = {
+  itemId: string;
+  before: ClipPatch;
+  after: ClipPatch;
+};
+
 export function EditorWorkbench({
   project,
   passes,
@@ -194,6 +252,8 @@ export function EditorWorkbench({
     "";
   const [selectedPassOverride, setSelectedPassOverride] = useState<string>();
   const selectedPassId = selectedPassOverride ?? defaultPassId;
+  const isCurrentPass = selectedPassId === project.metadata.currentPassId;
+
   const [noteType, setNoteType] = useState<NoteType>("clip_review");
   const [draft, setDraft] = useState("");
   const [isSubmittingNote, setIsSubmittingNote] = useState(false);
@@ -201,10 +261,60 @@ export function EditorWorkbench({
   const [isPlaying, setIsPlaying] = useState(false);
   const [followPlayhead, setFollowPlayhead] = useState(true);
   const [scrollSignal, setScrollSignal] = useState(0);
+  const [selectedClipId, setSelectedClipId] = useState<string | undefined>();
+  const [pendingMutation, setPendingMutation] = useState(false);
+
   const visibleTimelineClips = useMemo(
     () => timelineClips.filter((clip) => clip.passId === selectedPassId),
     [selectedPassId, timelineClips],
   );
+
+  // Local optimistic state — mirrors server but allows drag-time edits
+  const [localClips, setLocalClips] = useState(visibleTimelineClips);
+  const lastEditAt = useRef(0);
+  useEffect(() => {
+    // Resync from server when not mid-edit
+    if (Date.now() - lastEditAt.current > 1500) {
+      setLocalClips(visibleTimelineClips);
+    }
+  }, [visibleTimelineClips]);
+
+  // Undo/redo stack — only for patch-style edits (not delete/split/duplicate).
+  // Keyed by selectedPassId so the stack resets cleanly when switching passes.
+  const [historyState, setHistoryState] = useState<{
+    passId: string;
+    history: HistoryEntry[];
+    cursor: number;
+  }>(() => ({ passId: selectedPassId, history: [], cursor: 0 }));
+  const history = useMemo(
+    () => (historyState.passId === selectedPassId ? historyState.history : []),
+    [historyState, selectedPassId],
+  );
+  const historyCursor = useMemo(
+    () => (historyState.passId === selectedPassId ? historyState.cursor : 0),
+    [historyState, selectedPassId],
+  );
+  const setHistory = useCallback(
+    (updater: (prev: HistoryEntry[]) => HistoryEntry[]) => {
+      setHistoryState((prev) => ({
+        passId: selectedPassId,
+        history: updater(prev.passId === selectedPassId ? prev.history : []),
+        cursor: prev.passId === selectedPassId ? prev.cursor : 0,
+      }));
+    },
+    [selectedPassId],
+  );
+  const setHistoryCursor = useCallback(
+    (updater: (prev: number) => number) => {
+      setHistoryState((prev) => ({
+        passId: selectedPassId,
+        history: prev.passId === selectedPassId ? prev.history : [],
+        cursor: updater(prev.passId === selectedPassId ? prev.cursor : 0),
+      }));
+    },
+    [selectedPassId],
+  );
+
   const selectedRenderJob = useMemo(
     () =>
       renderJobs.find(
@@ -213,10 +323,17 @@ export function EditorWorkbench({
     [renderJobs, selectedPassId],
   );
   const totalDuration = useMemo(
-    () => Math.max(0, ...visibleTimelineClips.map((clip) => clip.timelineEnd)),
-    [visibleTimelineClips],
+    () => Math.max(0, ...localClips.map((clip) => clip.timelineEnd)),
+    [localClips],
   );
-  const selectedClip = clipAtTime(visibleTimelineClips, playheadTime) ?? visibleTimelineClips[0];
+
+  const explicitlySelectedClip = useMemo(
+    () => (selectedClipId ? localClips.find((c) => c.id === selectedClipId) : undefined),
+    [localClips, selectedClipId],
+  );
+  const selectedClip =
+    explicitlySelectedClip ?? clipAtTime(localClips, playheadTime) ?? localClips[0];
+
   const clipNotes = useMemo(
     () =>
       selectedClip
@@ -229,7 +346,7 @@ export function EditorWorkbench({
     [notes, selectedClip],
   );
   const selectedClipIndex = selectedClip
-    ? visibleTimelineClips.findIndex((clip) => clip.id === selectedClip.id)
+    ? localClips.findIndex((clip) => clip.id === selectedClip.id)
     : -1;
 
   useEffect(() => {
@@ -268,26 +385,187 @@ export function EditorWorkbench({
     return () => cancelAnimationFrame(animationFrame);
   }, [isPlaying, totalDuration]);
 
+  // ── Mutation helpers ──────────────────────────────────────────────
+
+  const previewClipChange = useCallback((clipId: string, patch: ClipPatch) => {
+    lastEditAt.current = Date.now();
+    setLocalClips((prev) =>
+      prev.map((clip) => (clip.id === clipId ? applyPatchToClip(clip, patch) : clip)),
+    );
+  }, []);
+
+  const commitClipChange = useCallback(
+    async (clipId: string, patch: ClipPatch, opts: { recordHistory?: boolean } = {}) => {
+      lastEditAt.current = Date.now();
+      const recordHistory = opts.recordHistory ?? true;
+
+      // Capture before state for undo
+      const before = visibleTimelineClips.find((c) => c.id === clipId);
+      if (before && recordHistory) {
+        const beforePatch = patchFromClip(before);
+        const afterPatch: ClipPatch = { ...patch };
+        setHistory((prev) => {
+          const trimmed = prev.slice(0, historyCursor);
+          return [...trimmed, { itemId: clipId, before: beforePatch, after: afterPatch }];
+        });
+        setHistoryCursor((c) => c + 1);
+      }
+
+      // Apply locally too in case caller didn't use preview
+      setLocalClips((prev) =>
+        prev.map((clip) => (clip.id === clipId ? applyPatchToClip(clip, patch) : clip)),
+      );
+
+      setPendingMutation(true);
+      try {
+        await updateTimelineClipAction({
+          projectId: project.id,
+          itemId: clipId,
+          patch,
+        });
+        router.refresh();
+      } finally {
+        setPendingMutation(false);
+      }
+    },
+    [
+      historyCursor,
+      project.id,
+      router,
+      setHistory,
+      setHistoryCursor,
+      visibleTimelineClips,
+    ],
+  );
+
+  const splitAtPlayhead = useCallback(async () => {
+    if (!isCurrentPass || !selectedClip) return;
+    if (
+      playheadTime <= selectedClip.timelineStart + 0.1 ||
+      playheadTime >= selectedClip.timelineEnd - 0.1
+    ) {
+      return;
+    }
+    setPendingMutation(true);
+    try {
+      await splitTimelineClipAction({
+        projectId: project.id,
+        itemId: selectedClip.id,
+        splitAtMasterTime: playheadTime,
+        clipLabel: clipName(selectedClip),
+      });
+      router.refresh();
+    } finally {
+      setPendingMutation(false);
+    }
+  }, [isCurrentPass, playheadTime, project.id, router, selectedClip]);
+
+  const deleteSelected = useCallback(async () => {
+    if (!isCurrentPass || !selectedClip) return;
+    setPendingMutation(true);
+    try {
+      await deleteTimelineClipAction({
+        projectId: project.id,
+        itemId: selectedClip.id,
+        clipLabel: clipName(selectedClip),
+      });
+      setSelectedClipId(undefined);
+      router.refresh();
+    } finally {
+      setPendingMutation(false);
+    }
+  }, [isCurrentPass, project.id, router, selectedClip]);
+
+  const duplicateSelected = useCallback(async () => {
+    if (!isCurrentPass || !selectedClip) return;
+    setPendingMutation(true);
+    try {
+      await duplicateTimelineClipAction({
+        projectId: project.id,
+        itemId: selectedClip.id,
+        clipLabel: clipName(selectedClip),
+      });
+      router.refresh();
+    } finally {
+      setPendingMutation(false);
+    }
+  }, [isCurrentPass, project.id, router, selectedClip]);
+
+  const undo = useCallback(async () => {
+    if (historyCursor === 0) return;
+    const entry = history[historyCursor - 1];
+    if (!entry) return;
+    setHistoryCursor((c) => c - 1);
+    await commitClipChange(entry.itemId, entry.before, { recordHistory: false });
+  }, [commitClipChange, history, historyCursor, setHistoryCursor]);
+
+  const redo = useCallback(async () => {
+    if (historyCursor >= history.length) return;
+    const entry = history[historyCursor];
+    if (!entry) return;
+    setHistoryCursor((c) => c + 1);
+    await commitClipChange(entry.itemId, entry.after, { recordHistory: false });
+  }, [commitClipChange, history, historyCursor, setHistoryCursor]);
+
+  // ── Keyboard shortcuts ─────────────────────────────────────────────
+
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent) {
-      if (event.code !== "Space") return;
-
       const target = event.target as HTMLElement | null;
       const isTyping =
         target?.tagName === "INPUT" ||
         target?.tagName === "TEXTAREA" ||
         target?.tagName === "SELECT" ||
         target?.isContentEditable;
-
       if (isTyping) return;
 
-      event.preventDefault();
-      setIsPlaying((value) => !value);
+      const meta = event.metaKey || event.ctrlKey;
+
+      if (event.code === "Space") {
+        event.preventDefault();
+        setIsPlaying((value) => !value);
+        return;
+      }
+      if (meta && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          void redo();
+        } else {
+          void undo();
+        }
+        return;
+      }
+      if (meta && event.key.toLowerCase() === "d") {
+        event.preventDefault();
+        void duplicateSelected();
+        return;
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        if (selectedClip && isCurrentPass) {
+          event.preventDefault();
+          void deleteSelected();
+        }
+        return;
+      }
+      if (event.key.toLowerCase() === "s" && !meta && !event.shiftKey && !event.altKey) {
+        if (selectedClip && isCurrentPass) {
+          event.preventDefault();
+          void splitAtPlayhead();
+        }
+      }
     }
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [
+    deleteSelected,
+    duplicateSelected,
+    isCurrentPass,
+    redo,
+    selectedClip,
+    splitAtPlayhead,
+    undo,
+  ]);
 
   function applyQuickAction(action: QuickAction) {
     if (!selectedClip) return;
@@ -334,6 +612,7 @@ export function EditorWorkbench({
     setPlayheadTime(0);
     setIsPlaying(false);
     setScrollSignal((value) => value + 1);
+    setSelectedClipId(undefined);
   }
 
   function seekToTime(nextTime: number) {
@@ -342,8 +621,11 @@ export function EditorWorkbench({
   }
 
   function selectClip(clipId: string) {
-    const clip = visibleTimelineClips.find((item) => item.id === clipId);
-    if (clip) setPlayheadTime(clip.timelineStart);
+    const clip = localClips.find((item) => item.id === clipId);
+    if (clip) {
+      setSelectedClipId(clipId);
+      setPlayheadTime(clip.timelineStart);
+    }
   }
 
   function stopPlayback() {
@@ -353,11 +635,9 @@ export function EditorWorkbench({
 
   function jumpToClip(direction: -1 | 1) {
     if (selectedClipIndex < 0) return;
-    const nextClip =
-      visibleTimelineClips[
-        clamp(selectedClipIndex + direction, 0, visibleTimelineClips.length - 1)
-      ];
+    const nextClip = localClips[clamp(selectedClipIndex + direction, 0, localClips.length - 1)];
     if (!nextClip) return;
+    setSelectedClipId(nextClip.id);
     setPlayheadTime(nextClip.timelineStart);
     setScrollSignal((value) => value + 1);
   }
@@ -365,13 +645,9 @@ export function EditorWorkbench({
   return (
     <section className="flex min-w-0 flex-col overflow-hidden rounded border border-neutral-800 bg-neutral-950 text-neutral-100">
       <header className="flex flex-none flex-wrap items-center gap-3 border-b border-neutral-800 bg-neutral-900 px-4 py-2">
-        <span className="text-[10px] uppercase tracking-widest text-neutral-500">
-          Editor
-        </span>
+        <span className="text-[10px] uppercase tracking-widest text-neutral-500">Editor</span>
         <span className="text-neutral-700">/</span>
-        <span className="text-sm font-semibold text-neutral-100">
-          {project.name}
-        </span>
+        <span className="text-sm font-semibold text-neutral-100">{project.name}</span>
         <label className="ml-auto flex items-center gap-2 text-[10px] uppercase tracking-widest text-neutral-500">
           Reviewing
           <select
@@ -387,7 +663,8 @@ export function EditorWorkbench({
           </select>
         </label>
         <span className="text-[10px] text-neutral-600">
-          {visibleTimelineClips.length} clips · {notes.length} notes
+          {localClips.length} clips · {notes.length} notes
+          {pendingMutation ? " · saving…" : null}
         </span>
       </header>
 
@@ -411,25 +688,53 @@ export function EditorWorkbench({
         onToggleFollow={() => setFollowPlayhead((value) => !value)}
       />
 
+      <ClipActionBar
+        editable={isCurrentPass}
+        canSplit={
+          isCurrentPass &&
+          !!selectedClip &&
+          playheadTime > selectedClip.timelineStart + 0.1 &&
+          playheadTime < selectedClip.timelineEnd - 0.1
+        }
+        canUndo={historyCursor > 0}
+        canRedo={historyCursor < history.length}
+        selectedClipName={selectedClip ? clipName(selectedClip) : undefined}
+        onSplit={splitAtPlayhead}
+        onDelete={deleteSelected}
+        onDuplicate={duplicateSelected}
+        onUndo={undo}
+        onRedo={redo}
+      />
+
       <TimelinePanel
-        clips={visibleTimelineClips}
+        clips={localClips}
         notes={notes}
         selectedClipId={selectedClip?.id}
         playheadTime={playheadTime}
         followPlayhead={followPlayhead}
         scrollSignal={scrollSignal}
+        editable={isCurrentPass}
         onSelectClip={selectClip}
         onSeek={seekToTime}
+        onClipPreview={previewClipChange}
+        onClipCommit={(id, patch) => void commitClipChange(id, patch)}
       />
 
       <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
-        <div className="w-full flex-none border-b border-neutral-800 xl:w-80 xl:border-b-0 xl:border-r">
+        <div className="w-full flex-none border-b border-neutral-800 xl:w-96 xl:border-b-0 xl:border-r">
           <PreviewPane
+            key={selectedClip?.id}
             clip={selectedClip}
             clipNotes={clipNotes}
             isPlaying={isPlaying}
             playheadTime={playheadTime}
+            editable={isCurrentPass}
             onQuickAction={applyQuickAction}
+            onCommit={(patch) =>
+              selectedClip
+                ? void commitClipChange(selectedClip.id, patch)
+                : undefined
+            }
           />
         </div>
 
@@ -439,9 +744,7 @@ export function EditorWorkbench({
             onSubmit={handleNoteSubmit}
             className="flex flex-col gap-2 border-b border-neutral-800 p-4"
           >
-            <p className="text-[10px] uppercase tracking-widest text-neutral-600">
-              Add Note
-            </p>
+            <p className="text-[10px] uppercase tracking-widest text-neutral-600">Add Note</p>
 
             <input type="hidden" name="projectId" value={project.id} />
             <input type="hidden" name="author" value="user" />
@@ -479,7 +782,7 @@ export function EditorWorkbench({
                 onChange={(event) => selectClip(event.target.value)}
                 className="min-w-0 flex-1 rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-300 outline-none focus:border-blue-600"
               >
-                {visibleTimelineClips.map((clip) => (
+                {localClips.map((clip) => (
                   <option key={clip.id} value={clip.id}>
                     {clipName(clip)}
                   </option>
@@ -533,8 +836,7 @@ export function EditorWorkbench({
             ) : (
               <div className="space-y-1.5">
                 {clipNotes.map((note) => {
-                  const badgeCls =
-                    noteTypeBadge[note.noteType] ?? "bg-neutral-700 text-neutral-300";
+                  const badgeCls = noteTypeBadge[note.noteType] ?? "bg-neutral-700 text-neutral-300";
                   return (
                     <article
                       key={note.id}
@@ -558,9 +860,7 @@ export function EditorWorkbench({
                           {new Date(note.createdAt).toLocaleTimeString()}
                         </span>
                       </div>
-                      <p className="text-xs leading-relaxed text-neutral-300">
-                        {note.body}
-                      </p>
+                      <p className="text-xs leading-relaxed text-neutral-300">{note.body}</p>
                     </article>
                   );
                 })}
@@ -577,6 +877,94 @@ function clipAtTime(clips: TimelineClip[], time: number) {
   return (
     clips.find((clip) => time >= clip.timelineStart && time < clip.timelineEnd) ??
     clips.at(-1)
+  );
+}
+
+function ClipActionBar({
+  editable,
+  canSplit,
+  canUndo,
+  canRedo,
+  selectedClipName,
+  onSplit,
+  onDelete,
+  onDuplicate,
+  onUndo,
+  onRedo,
+}: {
+  editable: boolean;
+  canSplit: boolean;
+  canUndo: boolean;
+  canRedo: boolean;
+  selectedClipName?: string;
+  onSplit: () => void;
+  onDelete: () => void;
+  onDuplicate: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+}) {
+  const buttonCls =
+    "inline-flex h-7 items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-2 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40";
+  return (
+    <div className="flex flex-none flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-1.5">
+      <span className="text-[10px] uppercase tracking-widest text-neutral-500">Clip</span>
+      <span className="text-xs text-neutral-400">
+        {selectedClipName ?? "—"}
+      </span>
+      <div className="flex flex-wrap items-center gap-1.5 ml-auto">
+        <button
+          type="button"
+          onClick={onSplit}
+          disabled={!editable || !canSplit}
+          className={buttonCls}
+          title="Split selected clip at playhead (S)"
+        >
+          <Scissors className="h-3 w-3" aria-hidden="true" />
+          Split (S)
+        </button>
+        <button
+          type="button"
+          onClick={onDuplicate}
+          disabled={!editable}
+          className={buttonCls}
+          title="Duplicate selected clip (⌘D)"
+        >
+          <Copy className="h-3 w-3" aria-hidden="true" />
+          Duplicate (⌘D)
+        </button>
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={!editable}
+          className={`${buttonCls} hover:bg-red-700`}
+          title="Delete selected clip (Delete)"
+        >
+          <Trash2 className="h-3 w-3" aria-hidden="true" />
+          Delete (⌫)
+        </button>
+        <span className="mx-1 h-4 w-px bg-neutral-700" />
+        <button
+          type="button"
+          onClick={onUndo}
+          disabled={!canUndo}
+          className={buttonCls}
+          title="Undo (⌘Z)"
+        >
+          <Undo2 className="h-3 w-3" aria-hidden="true" />
+          Undo
+        </button>
+        <button
+          type="button"
+          onClick={onRedo}
+          disabled={!canRedo}
+          className={buttonCls}
+          title="Redo (⌘⇧Z)"
+        >
+          <Redo2 className="h-3 w-3" aria-hidden="true" />
+          Redo
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -758,13 +1146,17 @@ function PreviewPane({
   clipNotes,
   isPlaying,
   playheadTime,
+  editable,
   onQuickAction,
+  onCommit,
 }: {
   clip?: TimelineClip;
   clipNotes: Note[];
   isPlaying: boolean;
   playheadTime: number;
+  editable: boolean;
   onQuickAction: (action: QuickAction) => void;
+  onCommit: (patch: ClipPatch) => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
@@ -844,9 +1236,7 @@ function PreviewPane({
                   />
                 ))}
               </div>
-              <p className="text-[10px] uppercase tracking-widest text-neutral-500">
-                Audio Clip
-              </p>
+              <p className="text-[10px] uppercase tracking-widest text-neutral-500">Audio Clip</p>
               <audio
                 ref={audioRef}
                 key={clip.id}
@@ -888,8 +1278,7 @@ function PreviewPane({
             <Row label="Section" value={clip.section} />
             <Row label="Timeline" value={`${formatTime(clip.timelineStart)} → ${formatTime(clip.timelineEnd)}`} mono />
             <Row label="Source Range" value={`${formatTime(clip.sourceIn)} → ${formatTime(clip.sourceOut)}`} mono />
-            <Row label="Duration" value={`${clip.duration}s`} mono />
-            <Row label="Rotation" value={rotation ? `${rotation}°` : "none"} mono />
+            <Row label="Duration" value={`${clip.duration.toFixed(2)}s`} mono />
             <Row label="Status" value={humanize(clip.asset?.status ?? "unknown")} />
             <Row label="Notes" value={String(clipNotes.length)} mono />
           </tbody>
@@ -902,9 +1291,11 @@ function PreviewPane({
         ) : null}
       </div>
 
+      <ClipInspector key={clip.id} clip={clip} editable={editable} onCommit={onCommit} />
+
       <div>
         <p className="mb-2 text-[10px] uppercase tracking-widest text-neutral-600">
-          Quick Actions
+          Quick Notes
         </p>
         <div className="grid grid-cols-2 gap-1.5">
           {quickActions.map((action) => {
@@ -927,6 +1318,130 @@ function PreviewPane({
   );
 }
 
+function ClipInspector({
+  clip,
+  editable,
+  onCommit,
+}: {
+  clip: TimelineClip;
+  editable: boolean;
+  onCommit: (patch: ClipPatch) => void;
+}) {
+  // Local input state — committed onBlur or Enter.
+  // Parent passes a `key={clip.id}` prop so this component remounts (and
+  // resets) when the selected clip changes, avoiding setState-in-effect.
+  const [timelineStart, setTimelineStart] = useState(clip.timelineStart.toString());
+  const [sourceIn, setSourceIn] = useState((clip.sourceIn ?? 0).toString());
+  const [sourceOut, setSourceOut] = useState((clip.sourceOut ?? 0).toString());
+  const [duration, setDuration] = useState(clip.duration.toString());
+  const [role, setRole] = useState<TimelineRole>(clip.role);
+
+  function commitField(field: keyof ClipPatch, raw: string) {
+    if (!editable) return;
+    const value = Number(raw);
+    if (!Number.isFinite(value)) return;
+    onCommit({ [field]: value });
+  }
+
+  function commitRole(next: TimelineRole) {
+    if (!editable) return;
+    if (next === clip.role) return;
+    setRole(next);
+    onCommit({ role: next });
+  }
+
+  return (
+    <div className="space-y-1.5 rounded border border-neutral-800 bg-neutral-900 p-2">
+      <div className="flex items-center justify-between">
+        <p className="text-[10px] uppercase tracking-widest text-neutral-500">Inspector</p>
+        {!editable ? (
+          <span className="text-[10px] text-amber-500/80">read-only · historical pass</span>
+        ) : null}
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <NumberField
+          label="Timeline start (s)"
+          value={timelineStart}
+          editable={editable}
+          onChange={setTimelineStart}
+          onCommit={() => commitField("timelineStart", timelineStart)}
+        />
+        <NumberField
+          label="Duration (s)"
+          value={duration}
+          editable={editable}
+          onChange={setDuration}
+          onCommit={() => commitField("targetDuration", duration)}
+        />
+        <NumberField
+          label="Source in (s)"
+          value={sourceIn}
+          editable={editable}
+          onChange={setSourceIn}
+          onCommit={() => commitField("sourceIn", sourceIn)}
+        />
+        <NumberField
+          label="Source out (s)"
+          value={sourceOut}
+          editable={editable}
+          onChange={setSourceOut}
+          onCommit={() => commitField("sourceOut", sourceOut)}
+        />
+        <label className="flex flex-col gap-0.5 text-[10px] text-neutral-500">
+          Role
+          <select
+            value={role}
+            disabled={!editable}
+            onChange={(e) => commitRole(e.target.value as TimelineRole)}
+            className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs text-neutral-200 outline-none focus:border-blue-600 disabled:opacity-50"
+          >
+            {roleOptions.map((r) => (
+              <option key={r} value={r}>
+                {humanize(r)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+    </div>
+  );
+}
+
+function NumberField({
+  label,
+  value,
+  editable,
+  onChange,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  editable: boolean;
+  onChange: (next: string) => void;
+  onCommit: () => void;
+}) {
+  return (
+    <label className="flex flex-col gap-0.5 text-[10px] text-neutral-500">
+      {label}
+      <input
+        type="number"
+        step="0.1"
+        value={value}
+        readOnly={!editable}
+        onChange={(e) => onChange(e.target.value)}
+        onBlur={onCommit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            (e.target as HTMLInputElement).blur();
+          }
+        }}
+        className="rounded border border-neutral-700 bg-neutral-800 px-2 py-1 text-xs tabular-nums text-neutral-200 outline-none focus:border-blue-600 read-only:opacity-60"
+      />
+    </label>
+  );
+}
+
 function Row({
   label,
   value,
@@ -939,9 +1454,7 @@ function Row({
   return (
     <tr className="border-b border-neutral-800/50">
       <td className="whitespace-nowrap py-0.5 pr-2 text-neutral-600">{label}</td>
-      <td className={`py-0.5 text-neutral-300 ${mono ? "tabular-nums" : ""}`}>
-        {value}
-      </td>
+      <td className={`py-0.5 text-neutral-300 ${mono ? "tabular-nums" : ""}`}>{value}</td>
     </tr>
   );
 }
