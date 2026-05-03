@@ -1444,3 +1444,40 @@ const pass8MusicTimelineSeed: SeedTimelineItem[] = [
 ];
 
 pass8TimelineSeed.push(...pass8VoiceoverTimelineSeed, ...pass8MusicTimelineSeed);
+
+// Pass 9: VO_01 is now Lionel's real recording (39.91s, was 22.15s TTS).
+// The VO_01 montage is extended by ~17s, so everything that started after
+// the VO_01 section on the master timeline shifts by +17s. The VO_01
+// audio entries themselves get longer durations.
+const PASS9_VO_01_END = 78; // pass-8 VO_01 ended at timelineStart 55 + 23s
+const PASS9_SHIFT = 17;
+
+export const pass9TimelineSeed: SeedTimelineItem[] = pass8TimelineSeed.map((item) => {
+  const next: SeedTimelineItem = {
+    ...item,
+    id: item.id.replace(/^p8-/, "p9-"),
+    notes: item.notes.replace(/^Pass 8:/, "Pass 9:").replace(/^V5 \/ Pass 8:/, "V6 / Pass 9:"),
+  };
+  if (next.id === "p9-audio-vo-01-late-night-drive") {
+    return {
+      ...next,
+      sourceIn: 0,
+      sourceOut: 39.91,
+      targetDuration: 40,
+      notes: "Pass 9: Lionel's real recording (39.91s) over extended late-night drive/keyboard b-roll montage.",
+    };
+  }
+  if (next.id === "p9-audio-music-vo-01") {
+    return {
+      ...next,
+      sourceOut: 40,
+      targetDuration: 40,
+      notes: "Pass 9: low music bed ducked under VO 01 (extended for real-recording length).",
+    };
+  }
+  if (typeof next.timelineStart === "number" && next.timelineStart > PASS9_VO_01_END) {
+    return { ...next, timelineStart: next.timelineStart + PASS9_SHIFT };
+  }
+  return next;
+});
+

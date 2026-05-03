@@ -6,6 +6,7 @@ import {
   pass6TimelineSeed,
   pass7TimelineSeed,
   pass8TimelineSeed,
+  pass9TimelineSeed,
   pianoProjectRoot,
   sourceRelativePaths,
   timelineSeed,
@@ -195,9 +196,9 @@ function seed(database: Database.Database) {
           thesis:
             "I drove overnight to pick up rare DS 6.0 and DS 5.5 piano keyboards because hand size changes the way you experience the piano.",
           targetRuntime: "11:30-12:30",
-          currentPass: "Pass 8: Narration and Music",
-          currentPassId: "pass-8-narration-music",
-          currentRenderJobId: "render-v5-narration-music",
+          currentPass: "Pass 9: Real VO + Extended Montage",
+          currentPassId: "pass-9-real-vo-extended-montage",
+          currentRenderJobId: "render-v6-real-vo",
           githubRepo: "https://github.com/musical-basics/piano-hand-size-2-video",
         }),
       });
@@ -231,6 +232,13 @@ function seed(database: Database.Database) {
       "needs_review",
       "Use the current narration voiceovers and an original royalty-free music bed under travel montage sections.",
     ],
+    [
+      "pass-9-real-vo-extended-montage",
+      "Pass 9: Real VO + Extended Montage",
+      9,
+      "needs_review",
+      "Replace VO_01 with Lionel's real recording, re-clone the Cartesia voice from it, regenerate VO_02..VO_06, and extend the VO_01 montage to fit.",
+    ],
   ] as const;
 
   const insertPass = database.prepare(
@@ -246,6 +254,7 @@ function seed(database: Database.Database) {
   seedTimeline(database, projectId, timestamp, "pass-6-vo-music-cleanup", pass6TimelineSeed);
   seedTimeline(database, projectId, timestamp, "pass-7-clip-note-fixes", pass7TimelineSeed);
   seedTimeline(database, projectId, timestamp, "pass-8-narration-music", pass8TimelineSeed);
+  seedTimeline(database, projectId, timestamp, "pass-9-real-vo-extended-montage", pass9TimelineSeed);
   seedRenderJobs(database, projectId, timestamp);
   updateProjectCurrentPass(database, projectId);
 
@@ -466,6 +475,28 @@ function seedRenderJobs(database: Database.Database, projectId: string, timestam
       completedAt: timestamp,
       command: "./make_rough_review_cut_v5.sh",
       logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/docs/PASS8_V5_VO_MUSIC_LOG.md",
+    });
+
+  database
+    .prepare(
+      `INSERT OR IGNORE INTO render_jobs (
+        id, projectId, passId, name, status, outputPath, startedAt, completedAt, command, logPath
+      ) VALUES (
+        @id, @projectId, @passId, @name, @status, @outputPath, @startedAt, @completedAt, @command, @logPath
+      )`,
+    )
+    .run({
+      id: "render-v6-real-vo",
+      projectId,
+      passId: "pass-9-real-vo-extended-montage",
+      name: "Rough review cut v6",
+      status: "done",
+      outputPath:
+        "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/renders/review_cuts/piano_hand_size_part2_rough_cut_v6.mp4",
+      startedAt: timestamp,
+      completedAt: timestamp,
+      command: "./scripts/make_rough_review_cut_v6.sh",
+      logPath: "/Users/lionelyu/Music/Piano Hand Size Part 2/keyboard-trip/docs/PASS9_V6_REAL_VO_LOG.md",
     });
 }
 
