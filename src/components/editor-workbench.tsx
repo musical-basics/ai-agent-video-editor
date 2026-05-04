@@ -798,6 +798,13 @@ export function EditorWorkbench({
         onClipCommit={(id, patch) => void commitClipChange(id, patch)}
       />
 
+      <AudioMixer
+        clips={localClips}
+        isPlaying={isPlaying}
+        playheadTime={playheadTime}
+        projectRoot={project.rootPath}
+      />
+
       <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
         <div className="w-full flex-none border-b border-neutral-800 xl:w-96 xl:border-b-0 xl:border-r">
           <PreviewPane
@@ -949,6 +956,93 @@ export function EditorWorkbench({
         </div>
       </div>
     </section>
+  );
+}
+
+/**
+ * Plays every voiceover/music clip on the current pass that overlaps the
+ * playhead, synced to the master playhead and play state. Renders hidden
+ * <audio> elements — the visible video preview keeps handling its own video
+ * audio. This means a-roll original audio + voiceover + music can all play
+ * together during master playback, the same way the rendered cut sounds.
+ *
+ * Volume defaults match the cut script: voiceover at full, music ducked low.
+ */
+function AudioMixer({
+  clips,
+  isPlaying,
+  playheadTime,
+  projectRoot,
+}: {
+  clips: TimelineClip[];
+  isPlaying: boolean;
+  playheadTime: number;
+  projectRoot: string;
+}) {
+  const audioClips = clips.filter(
+    (clip) => clip.role === "voiceover" || clip.role === "music",
+  );
+  return (
+    <>
+      {audioClips.map((clip) => (
+        <AudioTrack
+          key={clip.id}
+          clip={clip}
+          isPlaying={isPlaying}
+          playheadTime={playheadTime}
+          projectRoot={projectRoot}
+        />
+      ))}
+    </>
+  );
+}
+
+function AudioTrack({
+  clip,
+  isPlaying,
+  playheadTime,
+  projectRoot,
+}: {
+  clip: TimelineClip;
+  isPlaying: boolean;
+  playheadTime: number;
+  projectRoot: string;
+}) {
+  const audioRef = useRef<HTMLAudioElement>(null);
+  const source = mediaUrl(clip.asset?.metadata.relativePath, projectRoot);
+  const inRange = playheadTime >= clip.timelineStart && playheadTime < clip.timelineEnd;
+  const offsetInClip = clamp(playheadTime - clip.timelineStart, 0, clip.duration);
+  const sourceTime = (clip.sourceIn ?? 0) + offsetInClip;
+  const targetVolume = clip.role === "music" ? 0.06 : 1.0;
+
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio || !source) return;
+
+    audio.volume = targetVolume;
+
+    if (inRange && Number.isFinite(sourceTime) && Math.abs(audio.currentTime - sourceTime) > 0.3) {
+      audio.currentTime = sourceTime;
+    }
+
+    if (isPlaying && inRange) {
+      void audio.play().catch(() => undefined);
+    } else {
+      audio.pause();
+    }
+  }, [inRange, isPlaying, source, sourceTime, targetVolume]);
+
+  if (!source) return null;
+  // aria-hidden because these are pure mixer outputs; the visible audio preview
+  // for a single selected clip lives inside PreviewPane.
+  return (
+    <audio
+      ref={audioRef}
+      src={source}
+      preload="auto"
+      className="hidden"
+      aria-hidden="true"
+    />
   );
 }
 
