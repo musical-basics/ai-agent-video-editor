@@ -112,7 +112,7 @@ export type ClipPatch = {
   role?: TimelineRole;
 };
 
-type DragMode = "move" | "trim-left" | "trim-right";
+type DragMode = "move" | "trim-left" | "trim-right" | "slip";
 
 type DragState = {
   clipId: string;
@@ -133,6 +133,7 @@ export function TimelinePanel({
   scrollSignal = 0,
   editable = true,
   pxPerSecond = DEFAULT_PX_PER_SECOND,
+  slipKeyHeld = false,
   onSelectClip,
   onSeek,
   onClipPreview,
@@ -146,6 +147,7 @@ export function TimelinePanel({
   scrollSignal?: number;
   editable?: boolean;
   pxPerSecond?: number;
+  slipKeyHeld?: boolean;
   onSelectClip?: (clipId: string) => void;
   onSeek?: (time: number) => void;
   onClipPreview?: (clipId: string, patch: ClipPatch) => void;
@@ -257,6 +259,11 @@ export function TimelinePanel({
     event.preventDefault();
     onSelectClip?.(clip.id);
 
+    // Body drag becomes a slip when T is held (FCP-style slip tool).
+    if (mode === "move" && slipKeyHeld) {
+      mode = "slip";
+    }
+
     dragRef.current = {
       clipId: clip.id,
       mode,
@@ -314,6 +321,24 @@ export function TimelinePanel({
         const patch: ClipPatch = { targetDuration: nextDuration };
         if (nextSourceOut !== undefined) patch.sourceOut = nextSourceOut;
         onClipPreview?.(drag.clipId, patch);
+      } else if (drag.mode === "slip") {
+        // Slip: timeline position and duration stay fixed, source range scrolls.
+        // Drag right → show later content (sourceIn/Out advance).
+        // Drag left  → show earlier content (sourceIn/Out retreat).
+        // Clamp so sourceIn never goes below 0; if asset duration is known,
+        // also clamp sourceOut to it.
+        const assetDuration = start.asset?.durationSeconds;
+        const baseIn = start.sourceIn ?? 0;
+        const baseOut = start.sourceOut ?? baseIn + start.duration;
+        let slipDelta = -deltaTime; // dragging right means seeing later content
+        const minDelta = -baseIn; // sourceIn cannot go below 0
+        const maxDelta =
+          assetDuration !== undefined ? assetDuration - baseOut : Infinity;
+        slipDelta = Math.max(minDelta, Math.min(maxDelta, slipDelta));
+        onClipPreview?.(drag.clipId, {
+          sourceIn: baseIn + slipDelta,
+          sourceOut: baseOut + slipDelta,
+        });
       }
     }
 
@@ -358,6 +383,17 @@ export function TimelinePanel({
           if (start.sourceOut !== undefined) {
             patch.sourceOut = (start.sourceIn ?? 0) + nextDuration;
           }
+        } else if (drag.mode === "slip") {
+          const assetDuration = start.asset?.durationSeconds;
+          const baseIn = start.sourceIn ?? 0;
+          const baseOut = start.sourceOut ?? baseIn + start.duration;
+          let slipDelta = -deltaTime;
+          const minDelta = -baseIn;
+          const maxDelta =
+            assetDuration !== undefined ? assetDuration - baseOut : Infinity;
+          slipDelta = Math.max(minDelta, Math.min(maxDelta, slipDelta));
+          patch.sourceIn = baseIn + slipDelta;
+          patch.sourceOut = baseOut + slipDelta;
         }
         onClipCommit?.(drag.clipId, patch);
       }
@@ -456,7 +492,13 @@ export function TimelinePanel({
                           event.stopPropagation();
                           onSelectClip?.(clip.id);
                         }}
-                        className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass} ${editable ? "cursor-grab active:cursor-grabbing" : ""}`}
+                        className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass} ${
+                          editable
+                            ? slipKeyHeld
+                              ? "cursor-ew-resize"
+                              : "cursor-grab active:cursor-grabbing"
+                            : ""
+                        }`}
                         style={{
                           left: `${clip.timelineStart * pxPerSecond}px`,
                           width: `${width}px`,
@@ -533,7 +575,11 @@ export function TimelinePanel({
         ))}
         {editable ? (
           <span className="ml-auto text-neutral-600">
-            {hoverDrag ? "dragging…" : "drag clip body to move · drag edges to trim · drop on another lane to change role"}
+            {slipKeyHeld
+              ? "slip mode (T held) — drag clip body to scroll source, edges & position fixed"
+              : hoverDrag
+                ? "dragging…"
+                : "drag clip body to move · drag edges to trim · drop on another lane to change role · hold T to slip"}
           </span>
         ) : (
           <span className="ml-auto text-amber-500/80">

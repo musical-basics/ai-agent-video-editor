@@ -272,6 +272,7 @@ export function EditorWorkbench({
   const [selectedClipId, setSelectedClipId] = useState<string | undefined>();
   const [pendingMutation, setPendingMutation] = useState(false);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+  const [slipKeyHeld, setSlipKeyHeld] = useState(false);
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -600,11 +601,32 @@ export function EditorWorkbench({
           event.preventDefault();
           void splitAtPlayhead();
         }
+        return;
+      }
+      if (event.key.toLowerCase() === "t" && !meta && !event.altKey && !event.shiftKey) {
+        // Hold T to slip-drag the next clip move (FCP slip tool).
+        if (!event.repeat) setSlipKeyHeld(true);
       }
     }
 
+    function handleKeyUp(event: KeyboardEvent) {
+      if (event.key.toLowerCase() === "t") {
+        setSlipKeyHeld(false);
+      }
+    }
+
+    function handleBlur() {
+      setSlipKeyHeld(false);
+    }
+
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keyup", handleKeyUp);
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("keyup", handleKeyUp);
+      window.removeEventListener("blur", handleBlur);
+    };
   }, [
     deleteSelected,
     duplicateSelected,
@@ -769,6 +791,7 @@ export function EditorWorkbench({
         scrollSignal={scrollSignal}
         editable={isCurrentPass}
         pxPerSecond={zoom}
+        slipKeyHeld={slipKeyHeld}
         onSelectClip={selectClip}
         onSeek={seekToTime}
         onClipPreview={previewClipChange}
