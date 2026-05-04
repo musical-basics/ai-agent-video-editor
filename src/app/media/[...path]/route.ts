@@ -7,10 +7,15 @@ import { pianoProjectRoot } from "@/lib/seed-data";
 const contentTypes: Record<string, string> = {
   ".jpg": "image/jpeg",
   ".jpeg": "image/jpeg",
+  ".m4a": "audio/mp4",
   ".m4v": "video/mp4",
   ".mov": "video/quicktime",
+  ".mp3": "audio/mpeg",
   ".mp4": "video/mp4",
+  ".ogg": "audio/ogg",
   ".png": "image/png",
+  ".wav": "audio/wav",
+  ".webm": "video/webm",
   ".webp": "image/webp",
 };
 
@@ -37,8 +42,8 @@ export async function GET(
   }
 
   try {
-    if (contentType.startsWith("video/")) {
-      return streamVideo(request, filePath, contentType);
+    if (contentType.startsWith("video/") || contentType.startsWith("audio/")) {
+      return streamMedia(request, filePath, contentType);
     }
 
     const bytes = await readFile(filePath);
@@ -53,7 +58,7 @@ export async function GET(
   }
 }
 
-async function streamVideo(request: Request, filePath: string, contentType: string) {
+async function streamMedia(request: Request, filePath: string, contentType: string) {
   const fileStat = await stat(filePath);
   const range = request.headers.get("range");
 
