@@ -1,5 +1,8 @@
 "use server";
 
+import { exec } from "node:child_process";
+import path from "node:path";
+import { promisify } from "node:util";
 import { revalidatePath } from "next/cache";
 import {
   addNote,
@@ -10,7 +13,10 @@ import {
   updateTimelineItem,
   type TimelineItemPatch,
 } from "@/lib/db";
+import { pianoProjectRoot } from "@/lib/seed-data";
 import type { TimelineItem, TimelineRole } from "@/lib/types";
+
+const execAsync = promisify(exec);
 
 const ALLOWED_ROLES: TimelineRole[] = [
   "a_roll",
@@ -207,6 +213,47 @@ export async function restoreTimelineClipAction(input: {
   );
   revalidatePath("/");
   return { ok: true };
+}
+
+export async function revealInFinderAction(input: { absolutePath: string }) {
+  const target = path.resolve(input.absolutePath);
+  const root = path.resolve(
+    process.env.VIDEO_EDITOR_PROJECT_ROOT ?? pianoProjectRoot,
+  );
+  // Only reveal files that live inside the configured project root.
+  // Without this, an injected path could open arbitrary locations.
+  if (!target.startsWith(`${root}${path.sep}`) && target !== root) {
+    return { ok: false, error: "outside project root" };
+  }
+  if (process.platform !== "darwin") {
+    return { ok: false, error: "reveal in finder only supported on macOS" };
+  }
+  try {
+    // -R selects the file in Finder rather than opening it.
+    await execAsync(`open -R ${JSON.stringify(target)}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
+}
+
+export async function openFileAction(input: { absolutePath: string }) {
+  const target = path.resolve(input.absolutePath);
+  const root = path.resolve(
+    process.env.VIDEO_EDITOR_PROJECT_ROOT ?? pianoProjectRoot,
+  );
+  if (!target.startsWith(`${root}${path.sep}`) && target !== root) {
+    return { ok: false, error: "outside project root" };
+  }
+  if (process.platform !== "darwin") {
+    return { ok: false, error: "open file only supported on macOS" };
+  }
+  try {
+    await execAsync(`open ${JSON.stringify(target)}`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e) };
+  }
 }
 
 export async function duplicateTimelineClipAction(input: {

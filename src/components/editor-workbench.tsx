@@ -17,6 +17,8 @@ import {
   BadgeAlert,
   Clapperboard,
   Copy,
+  ExternalLink,
+  FolderOpen,
   LocateFixed,
   Pause,
   Play,
@@ -38,6 +40,8 @@ import {
   createNote,
   deleteTimelineClipAction,
   duplicateTimelineClipAction,
+  openFileAction,
+  revealInFinderAction,
   splitTimelineClipAction,
   updateTimelineClipAction,
 } from "@/app/actions";
@@ -285,6 +289,10 @@ export function EditorWorkbench({
   const [pendingMutation, setPendingMutation] = useState(false);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   const [slipMode, setSlipMode] = useState(false);
+  const [contextMenu, setContextMenu] = useState<
+    | { clipId: string; x: number; y: number }
+    | null
+  >(null);
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -825,7 +833,52 @@ export function EditorWorkbench({
         onSeek={seekToTime}
         onClipPreview={previewClipChange}
         onClipCommit={(id, patch) => void commitClipChange(id, patch)}
+        onClipContextMenu={(clipId, x, y) => setContextMenu({ clipId, x, y })}
       />
+
+      {contextMenu ? (
+        <ClipContextMenu
+          clip={localClips.find((c) => c.id === contextMenu.clipId)}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          editable={isCurrentPass}
+          onClose={() => setContextMenu(null)}
+          onReveal={async (path) => {
+            await revealInFinderAction({ absolutePath: path });
+            setContextMenu(null);
+          }}
+          onOpen={async (path) => {
+            await openFileAction({ absolutePath: path });
+            setContextMenu(null);
+          }}
+          onCopyPath={async (path) => {
+            try {
+              await navigator.clipboard.writeText(path);
+            } catch {
+              // ignore — clipboard may be blocked
+            }
+            setContextMenu(null);
+          }}
+          onDuplicate={() => {
+            void duplicateSelected();
+            setContextMenu(null);
+          }}
+          onDelete={() => {
+            void deleteSelected();
+            setContextMenu(null);
+          }}
+          onSplit={() => {
+            void splitAtPlayhead();
+            setContextMenu(null);
+          }}
+          canSplit={
+            isCurrentPass &&
+            !!selectedClip &&
+            playheadTime > selectedClip.timelineStart + 0.1 &&
+            playheadTime < selectedClip.timelineEnd - 0.1
+          }
+        />
+      ) : null}
 
       <AudioMixer
         clips={localClips}
@@ -1008,18 +1061,27 @@ function AudioMixer({
   playheadTime: number;
   projectRoot: string;
 }) {
-  const audioClips = clips.filter(
-    (clip) => clip.role === "voiceover" || clip.role === "music",
-  );
+  // Dedupe by source URL. Multiple timeline clips often reuse the same
+  // file (e.g. one music bed referenced by 9 separate music clips). Loading
+  // the same 173 MB wav nine times wedges playback. One <audio> per file.
+  const groups = new Map<string, TimelineClip[]>();
+  for (const clip of clips) {
+    if (clip.role !== "voiceover" && clip.role !== "music") continue;
+    const src = mediaUrl(clip.asset?.metadata.relativePath, projectRoot);
+    if (!src) continue;
+    const list = groups.get(src) ?? [];
+    list.push(clip);
+    groups.set(src, list);
+  }
   return (
     <>
-      {audioClips.map((clip) => (
+      {Array.from(groups.entries()).map(([source, clipsForSource]) => (
         <AudioTrack
-          key={clip.id}
-          clip={clip}
+          key={source}
+          source={source}
+          clips={clipsForSource}
           isPlaying={isPlaying}
           playheadTime={playheadTime}
-          projectRoot={projectRoot}
         />
       ))}
     </>
@@ -1027,39 +1089,41 @@ function AudioMixer({
 }
 
 function AudioTrack({
-  clip,
+  source,
+  clips,
   isPlaying,
   playheadTime,
-  projectRoot,
 }: {
-  clip: TimelineClip;
+  source: string;
+  clips: TimelineClip[];
   isPlaying: boolean;
   playheadTime: number;
-  projectRoot: string;
 }) {
   const audioRef = useRef<HTMLAudioElement>(null);
-  const source = mediaUrl(clip.asset?.metadata.relativePath, projectRoot);
-  const inRange = playheadTime >= clip.timelineStart && playheadTime < clip.timelineEnd;
-  const offsetInClip = clamp(playheadTime - clip.timelineStart, 0, clip.duration);
-  const sourceTime = (clip.sourceIn ?? 0) + offsetInClip;
-  const targetVolume = clip.role === "music" ? 0.06 : 1.0;
-  // Track the last play() Promise so a rapid pause() doesn't reject it loudly.
   const playPromiseRef = useRef<Promise<void> | undefined>(undefined);
 
-  // Volume gets set whenever it changes, independent of play/pause.
+  // Find the clip whose timeline range currently contains the playhead.
+  // If multiple overlap (rare), the first wins.
+  const activeClip = clips.find(
+    (clip) => playheadTime >= clip.timelineStart && playheadTime < clip.timelineEnd,
+  );
+  const inRange = !!activeClip;
+  const offsetInClip = activeClip
+    ? clamp(playheadTime - activeClip.timelineStart, 0, activeClip.duration)
+    : 0;
+  const sourceTime = activeClip ? (activeClip.sourceIn ?? 0) + offsetInClip : 0;
+  // Music ducked to 0.18 (was 0.06 — too quiet to verify in a noisy preview).
+  const targetVolume = activeClip?.role === "music" ? 0.18 : 1.0;
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
     audio.volume = targetVolume;
   }, [targetVolume]);
 
-  // Play / pause is gated on isPlaying + inRange. This effect only fires when
-  // those gates change — it does NOT re-fire on every playhead frame, so
-  // multiple simultaneous AudioTracks don't fight each other or re-issue
-  // play() calls 60 times a second.
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio || !source) return;
+    if (!audio) return;
     if (isPlaying && inRange) {
       const promise = audio.play();
       playPromiseRef.current = promise;
@@ -1070,20 +1134,14 @@ function AudioTrack({
           audioRef.current.pause();
         }
       };
-      // Wait for any in-flight play() to settle before pausing, otherwise
-      // the play() Promise rejects with AbortError and the audio never starts.
       if (playPromiseRef.current) {
         void playPromiseRef.current.then(stop, stop);
       } else {
         stop();
       }
     }
-  }, [isPlaying, inRange, source]);
+  }, [isPlaying, inRange]);
 
-  // Seek separately from play/pause. Fires often (sourceTime changes per
-  // frame during playback), but the threshold guard means we don't actually
-  // touch currentTime unless the drift is meaningful — natural playback
-  // advances the audio cursor on its own.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -1094,9 +1152,6 @@ function AudioTrack({
     }
   }, [inRange, isPlaying, sourceTime]);
 
-  if (!source) return null;
-  // Position the element off-screen rather than display:none — safer across
-  // browsers; some have historically not played display:none media reliably.
   return (
     <audio
       ref={audioRef}
@@ -1134,6 +1189,114 @@ function visualClipAtTime(clips: TimelineClip[], time: number) {
   return overlapping
     .slice()
     .sort((a, b) => VISUAL_PRIORITY[a.role] - VISUAL_PRIORITY[b.role])[0];
+}
+
+function ClipContextMenu({
+  clip,
+  x,
+  y,
+  editable,
+  canSplit,
+  onClose,
+  onReveal,
+  onOpen,
+  onCopyPath,
+  onDuplicate,
+  onDelete,
+  onSplit,
+}: {
+  clip?: TimelineClip;
+  x: number;
+  y: number;
+  editable: boolean;
+  canSplit: boolean;
+  onClose: () => void;
+  onReveal: (absolutePath: string) => void;
+  onOpen: (absolutePath: string) => void;
+  onCopyPath: (absolutePath: string) => void;
+  onDuplicate: () => void;
+  onDelete: () => void;
+  onSplit: () => void;
+}) {
+  useEffect(() => {
+    function handleAway(event: MouseEvent | KeyboardEvent) {
+      if (event instanceof KeyboardEvent && event.key !== "Escape") return;
+      onClose();
+    }
+    window.addEventListener("mousedown", handleAway);
+    window.addEventListener("keydown", handleAway);
+    return () => {
+      window.removeEventListener("mousedown", handleAway);
+      window.removeEventListener("keydown", handleAway);
+    };
+  }, [onClose]);
+
+  if (!clip) return null;
+  const absolutePath = clip.asset?.path;
+  const itemCls =
+    "flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs text-neutral-200 transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40";
+
+  return (
+    <div
+      className="fixed z-50 min-w-[200px] rounded border border-neutral-700 bg-neutral-900 shadow-2xl"
+      style={{ left: x, top: y }}
+      onMouseDown={(e) => e.stopPropagation()}
+    >
+      <div className="border-b border-neutral-800 px-3 py-1.5 text-[10px] uppercase tracking-widest text-neutral-500">
+        {clipName(clip)}
+      </div>
+      <button
+        type="button"
+        className={itemCls}
+        disabled={!absolutePath}
+        onClick={() => absolutePath && onReveal(absolutePath)}
+      >
+        <FolderOpen className="h-3 w-3" aria-hidden="true" />
+        Reveal in Finder
+      </button>
+      <button
+        type="button"
+        className={itemCls}
+        disabled={!absolutePath}
+        onClick={() => absolutePath && onOpen(absolutePath)}
+      >
+        <ExternalLink className="h-3 w-3" aria-hidden="true" />
+        Open file
+      </button>
+      <button
+        type="button"
+        className={itemCls}
+        disabled={!absolutePath}
+        onClick={() => absolutePath && onCopyPath(absolutePath)}
+      >
+        <Copy className="h-3 w-3" aria-hidden="true" />
+        Copy file path
+      </button>
+      <div className="my-1 border-t border-neutral-800" />
+      <button type="button" className={itemCls} disabled={!editable || !canSplit} onClick={onSplit}>
+        <Scissors className="h-3 w-3" aria-hidden="true" />
+        Split at playhead
+      </button>
+      <button type="button" className={itemCls} disabled={!editable} onClick={onDuplicate}>
+        <Copy className="h-3 w-3" aria-hidden="true" />
+        Duplicate
+      </button>
+      <button
+        type="button"
+        className={`${itemCls} hover:bg-red-700`}
+        disabled={!editable}
+        onClick={onDelete}
+      >
+        <Trash2 className="h-3 w-3" aria-hidden="true" />
+        Delete
+      </button>
+      {absolutePath ? (
+        <div className="border-t border-neutral-800 px-3 py-1.5 text-[10px] text-neutral-600 break-all">
+          {absolutePath}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function ClipActionBar({

@@ -139,6 +139,7 @@ export function TimelinePanel({
   onSeek,
   onClipPreview,
   onClipCommit,
+  onClipContextMenu,
 }: {
   clips: TimelineClip[];
   notes: Note[];
@@ -154,6 +155,7 @@ export function TimelinePanel({
   onSeek?: (time: number) => void;
   onClipPreview?: (clipId: string, patch: ClipPatch) => void;
   onClipCommit?: (clipId: string, patch: ClipPatch) => void;
+  onClipContextMenu?: (clipId: string, screenX: number, screenY: number) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const trackAreaRef = useRef<HTMLDivElement>(null);
@@ -600,6 +602,12 @@ export function TimelinePanel({
                           event.stopPropagation();
                           const additive = event.metaKey || event.ctrlKey || event.shiftKey;
                           onSelectClip?.(clip.id, additive);
+                        }}
+                        onContextMenu={(event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          onSelectClip?.(clip.id);
+                          onClipContextMenu?.(clip.id, event.clientX, event.clientY);
                         }}
                         className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass} ${
                           editable
