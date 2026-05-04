@@ -331,8 +331,15 @@ export function EditorWorkbench({
     () => (selectedClipId ? localClips.find((c) => c.id === selectedClipId) : undefined),
     [localClips, selectedClipId],
   );
+  // Selection drives the inspector / action bar / notes — sticky once you click a clip.
   const selectedClip =
     explicitlySelectedClip ?? clipAtTime(localClips, playheadTime) ?? localClips[0];
+  // Preview always follows the playhead and prefers the visual lane at that moment,
+  // so scrubbing the timeline or letting playback advance updates the video pane.
+  const previewClip =
+    visualClipAtTime(localClips, playheadTime) ??
+    clipAtTime(localClips, playheadTime) ??
+    selectedClip;
 
   const clipNotes = useMemo(
     () =>
@@ -723,8 +730,9 @@ export function EditorWorkbench({
       <div className="flex min-h-0 flex-1 flex-col xl:flex-row">
         <div className="w-full flex-none border-b border-neutral-800 xl:w-96 xl:border-b-0 xl:border-r">
           <PreviewPane
-            key={selectedClip?.id}
-            clip={selectedClip}
+            key={previewClip?.id}
+            previewClip={previewClip}
+            inspectorClip={selectedClip}
             clipNotes={clipNotes}
             isPlaying={isPlaying}
             playheadTime={playheadTime}
@@ -878,6 +886,27 @@ function clipAtTime(clips: TimelineClip[], time: number) {
     clips.find((clip) => time >= clip.timelineStart && time < clip.timelineEnd) ??
     clips.at(-1)
   );
+}
+
+const VISUAL_PRIORITY: Record<TimelineRole, number> = {
+  a_roll: 0,
+  b_roll: 1,
+  still: 2,
+  title_card: 3,
+  placeholder: 4,
+  ambient: 5,
+  voiceover: 99,
+  music: 99,
+};
+
+function visualClipAtTime(clips: TimelineClip[], time: number) {
+  const overlapping = clips.filter(
+    (clip) => time >= clip.timelineStart && time < clip.timelineEnd,
+  );
+  if (overlapping.length === 0) return undefined;
+  return overlapping
+    .slice()
+    .sort((a, b) => VISUAL_PRIORITY[a.role] - VISUAL_PRIORITY[b.role])[0];
 }
 
 function ClipActionBar({
@@ -1142,7 +1171,8 @@ function RenderInfo({ label, value }: { label: string; value: string }) {
 }
 
 function PreviewPane({
-  clip,
+  previewClip,
+  inspectorClip,
   clipNotes,
   isPlaying,
   playheadTime,
@@ -1150,7 +1180,8 @@ function PreviewPane({
   onQuickAction,
   onCommit,
 }: {
-  clip?: TimelineClip;
+  previewClip?: TimelineClip;
+  inspectorClip?: TimelineClip;
   clipNotes: Note[];
   isPlaying: boolean;
   playheadTime: number;
@@ -1160,6 +1191,9 @@ function PreviewPane({
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
+  // Preview pane follows the playhead; inspector / metadata follow explicit selection.
+  const clip = previewClip ?? inspectorClip;
+  const metaClip = inspectorClip ?? previewClip;
   const thumbnail = mediaUrl(clip?.asset?.metadata.thumbnailPath);
   const source = mediaUrl(clip?.asset?.metadata.relativePath);
   const canPreviewVideo = clip?.asset?.kind === "video" && source;
@@ -1198,7 +1232,7 @@ function PreviewPane({
     }
   }, [canPreviewAudio, clip?.id, isPlaying, sourceTime]);
 
-  if (!clip) {
+  if (!clip || !metaClip) {
     return (
       <div className="grid h-full min-h-[240px] place-items-center text-xs text-neutral-600">
         No timeline clips found.
@@ -1206,7 +1240,8 @@ function PreviewPane({
     );
   }
 
-  const badgeCls = roleBadge[clip.role] ?? "bg-neutral-700 text-neutral-300";
+  const badgeCls = roleBadge[metaClip.role] ?? "bg-neutral-700 text-neutral-300";
+  const previewIsDifferent = clip.id !== metaClip.id;
 
   return (
     <div className="flex h-full flex-col gap-3 p-4">
@@ -1265,33 +1300,39 @@ function PreviewPane({
       <div className="space-y-1.5">
         <div className="flex items-start gap-2">
           <h2 className="flex-1 text-sm font-semibold leading-snug text-neutral-100">
-            {clipName(clip)}
+            {clipName(metaClip)}
           </h2>
           <span className={`flex-none rounded px-1.5 py-0.5 text-[10px] ${badgeCls}`}>
-            {humanize(clip.role)}
+            {humanize(metaClip.role)}
           </span>
         </div>
 
+        {previewIsDifferent ? (
+          <p className="text-[10px] text-neutral-500">
+            previewing <span className="text-neutral-300">{clipName(clip)}</span> at the playhead — inspector below edits the selected clip
+          </p>
+        ) : null}
+
         <table className="w-full border-collapse text-xs text-neutral-400">
           <tbody>
-            <Row label="Source" value={sourceName(clip)} />
-            <Row label="Section" value={clip.section} />
-            <Row label="Timeline" value={`${formatTime(clip.timelineStart)} → ${formatTime(clip.timelineEnd)}`} mono />
-            <Row label="Source Range" value={`${formatTime(clip.sourceIn)} → ${formatTime(clip.sourceOut)}`} mono />
-            <Row label="Duration" value={`${clip.duration.toFixed(2)}s`} mono />
-            <Row label="Status" value={humanize(clip.asset?.status ?? "unknown")} />
+            <Row label="Source" value={sourceName(metaClip)} />
+            <Row label="Section" value={metaClip.section} />
+            <Row label="Timeline" value={`${formatTime(metaClip.timelineStart)} → ${formatTime(metaClip.timelineEnd)}`} mono />
+            <Row label="Source Range" value={`${formatTime(metaClip.sourceIn)} → ${formatTime(metaClip.sourceOut)}`} mono />
+            <Row label="Duration" value={`${metaClip.duration.toFixed(2)}s`} mono />
+            <Row label="Status" value={humanize(metaClip.asset?.status ?? "unknown")} />
             <Row label="Notes" value={String(clipNotes.length)} mono />
           </tbody>
         </table>
 
-        {clip.notes ? (
+        {metaClip.notes ? (
           <p className="border-t border-neutral-800 pt-2 text-xs leading-relaxed text-neutral-500">
-            {clip.notes}
+            {metaClip.notes}
           </p>
         ) : null}
       </div>
 
-      <ClipInspector key={clip.id} clip={clip} editable={editable} onCommit={onCommit} />
+      <ClipInspector key={metaClip.id} clip={metaClip} editable={editable} onCommit={onCommit} />
 
       <div>
         <p className="mb-2 text-[10px] uppercase tracking-widest text-neutral-600">
