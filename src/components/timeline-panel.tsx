@@ -133,7 +133,7 @@ export function TimelinePanel({
   scrollSignal = 0,
   editable = true,
   pxPerSecond = DEFAULT_PX_PER_SECOND,
-  slipKeyHeld = false,
+  slipMode = false,
   onSelectClip,
   onSetSelection,
   onSeek,
@@ -148,7 +148,7 @@ export function TimelinePanel({
   scrollSignal?: number;
   editable?: boolean;
   pxPerSecond?: number;
-  slipKeyHeld?: boolean;
+  slipMode?: boolean;
   onSelectClip?: (clipId: string, additive?: boolean) => void;
   onSetSelection?: (clipIds: string[]) => void;
   onSeek?: (time: number) => void;
@@ -356,7 +356,7 @@ export function TimelinePanel({
     onSelectClip?.(clip.id);
 
     // Body drag becomes a slip when T is held (FCP-style slip tool).
-    if (mode === "move" && slipKeyHeld) {
+    if (mode === "move" && slipMode) {
       mode = "slip";
     }
 
@@ -603,7 +603,7 @@ export function TimelinePanel({
                         }}
                         className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass} ${
                           editable
-                            ? slipKeyHeld
+                            ? slipMode
                               ? "cursor-ew-resize"
                               : "cursor-grab active:cursor-grabbing"
                             : ""
@@ -684,7 +684,7 @@ export function TimelinePanel({
         ))}
         {editable ? (
           <span className="ml-auto text-neutral-600">
-            {slipKeyHeld
+            {slipMode
               ? "slip mode (T held) — drag clip body to scroll source, edges & position fixed"
               : hoverDrag
                 ? "dragging…"

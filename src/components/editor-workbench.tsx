@@ -284,7 +284,7 @@ export function EditorWorkbench({
   const primarySelectedClipId = selectedClipIds.values().next().value as string | undefined;
   const [pendingMutation, setPendingMutation] = useState(false);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
-  const [slipKeyHeld, setSlipKeyHeld] = useState(false);
+  const [slipMode, setSlipMode] = useState(false);
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -629,28 +629,25 @@ export function EditorWorkbench({
         return;
       }
       if (event.key.toLowerCase() === "t" && !meta && !event.altKey && !event.shiftKey) {
-        // Hold T to slip-drag the next clip move (FCP slip tool).
-        if (!event.repeat) setSlipKeyHeld(true);
+        // T toggles the FCP slip tool. Cursor stays in slip mode until pressed
+        // again or until Esc cancels.
+        if (!event.repeat) {
+          event.preventDefault();
+          setSlipMode((value) => !value);
+        }
+        return;
       }
-    }
-
-    function handleKeyUp(event: KeyboardEvent) {
-      if (event.key.toLowerCase() === "t") {
-        setSlipKeyHeld(false);
+      if (event.key === "Escape") {
+        if (slipMode) {
+          event.preventDefault();
+          setSlipMode(false);
+        }
       }
-    }
-
-    function handleBlur() {
-      setSlipKeyHeld(false);
     }
 
     window.addEventListener("keydown", handleKeyDown);
-    window.addEventListener("keyup", handleKeyUp);
-    window.addEventListener("blur", handleBlur);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
-      window.removeEventListener("keyup", handleKeyUp);
-      window.removeEventListener("blur", handleBlur);
     };
   }, [
     deleteSelected,
@@ -659,6 +656,7 @@ export function EditorWorkbench({
     redo,
     resetZoom,
     selectedClip,
+    slipMode,
     splitAtPlayhead,
     undo,
     zoomBy,
@@ -821,7 +819,7 @@ export function EditorWorkbench({
         scrollSignal={scrollSignal}
         editable={isCurrentPass}
         pxPerSecond={zoom}
-        slipKeyHeld={slipKeyHeld}
+        slipMode={slipMode}
         onSelectClip={selectClip}
         onSetSelection={(ids) => setSelectedClipIds(ids)}
         onSeek={seekToTime}
@@ -1045,33 +1043,66 @@ function AudioTrack({
   const offsetInClip = clamp(playheadTime - clip.timelineStart, 0, clip.duration);
   const sourceTime = (clip.sourceIn ?? 0) + offsetInClip;
   const targetVolume = clip.role === "music" ? 0.06 : 1.0;
+  // Track the last play() Promise so a rapid pause() doesn't reject it loudly.
+  const playPromiseRef = useRef<Promise<void> | undefined>(undefined);
 
+  // Volume gets set whenever it changes, independent of play/pause.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    audio.volume = targetVolume;
+  }, [targetVolume]);
+
+  // Play / pause is gated on isPlaying + inRange. This effect only fires when
+  // those gates change — it does NOT re-fire on every playhead frame, so
+  // multiple simultaneous AudioTracks don't fight each other or re-issue
+  // play() calls 60 times a second.
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !source) return;
+    if (isPlaying && inRange) {
+      const promise = audio.play();
+      playPromiseRef.current = promise;
+      void promise.catch(() => undefined);
+    } else {
+      const stop = () => {
+        if (audioRef.current && !audioRef.current.paused) {
+          audioRef.current.pause();
+        }
+      };
+      // Wait for any in-flight play() to settle before pausing, otherwise
+      // the play() Promise rejects with AbortError and the audio never starts.
+      if (playPromiseRef.current) {
+        void playPromiseRef.current.then(stop, stop);
+      } else {
+        stop();
+      }
+    }
+  }, [isPlaying, inRange, source]);
 
-    audio.volume = targetVolume;
-
-    if (inRange && Number.isFinite(sourceTime) && Math.abs(audio.currentTime - sourceTime) > 0.3) {
+  // Seek separately from play/pause. Fires often (sourceTime changes per
+  // frame during playback), but the threshold guard means we don't actually
+  // touch currentTime unless the drift is meaningful — natural playback
+  // advances the audio cursor on its own.
+  useEffect(() => {
+    const audio = audioRef.current;
+    if (!audio) return;
+    if (!Number.isFinite(sourceTime)) return;
+    const seekThreshold = isPlaying ? 0.5 : 0.05;
+    if (inRange && Math.abs(audio.currentTime - sourceTime) > seekThreshold) {
       audio.currentTime = sourceTime;
     }
-
-    if (isPlaying && inRange) {
-      void audio.play().catch(() => undefined);
-    } else {
-      audio.pause();
-    }
-  }, [inRange, isPlaying, source, sourceTime, targetVolume]);
+  }, [inRange, isPlaying, sourceTime]);
 
   if (!source) return null;
-  // aria-hidden because these are pure mixer outputs; the visible audio preview
-  // for a single selected clip lives inside PreviewPane.
+  // Position the element off-screen rather than display:none — safer across
+  // browsers; some have historically not played display:none media reliably.
   return (
     <audio
       ref={audioRef}
       src={source}
       preload="auto"
-      className="hidden"
+      style={{ position: "absolute", left: "-9999px", width: 1, height: 1 }}
       aria-hidden="true"
     />
   );
@@ -1437,7 +1468,10 @@ function PreviewPane({
     const video = videoRef.current;
     if (!video || !canPreviewVideo) return;
 
-    if (Number.isFinite(sourceTime) && Math.abs(video.currentTime - sourceTime) > 0.75) {
+    // Tight threshold so scrubbing and slip-drag visibly update the preview.
+    // Looser when actively playing, so we don't fight the natural play rate.
+    const seekThreshold = isPlaying ? 0.5 : 0.05;
+    if (Number.isFinite(sourceTime) && Math.abs(video.currentTime - sourceTime) > seekThreshold) {
       video.currentTime = sourceTime;
     }
 
@@ -1452,7 +1486,8 @@ function PreviewPane({
     const audio = audioRef.current;
     if (!audio || !canPreviewAudio) return;
 
-    if (Number.isFinite(sourceTime) && Math.abs(audio.currentTime - sourceTime) > 0.75) {
+    const seekThreshold = isPlaying ? 0.5 : 0.05;
+    if (Number.isFinite(sourceTime) && Math.abs(audio.currentTime - sourceTime) > seekThreshold) {
       audio.currentTime = sourceTime;
     }
 
