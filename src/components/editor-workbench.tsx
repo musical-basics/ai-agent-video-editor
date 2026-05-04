@@ -269,7 +269,19 @@ export function EditorWorkbench({
   const [isPlaying, setIsPlaying] = useState(false);
   const [followPlayhead, setFollowPlayhead] = useState(true);
   const [scrollSignal, setScrollSignal] = useState(0);
-  const [selectedClipId, setSelectedClipId] = useState<string | undefined>();
+  const [selectedClipIds, setSelectedClipIdsState] = useState<Set<string>>(() => new Set());
+  const setSelectedClipIds = useCallback((next: Iterable<string>) => {
+    setSelectedClipIdsState(new Set(next));
+  }, []);
+  const toggleClipInSelection = useCallback((clipId: string) => {
+    setSelectedClipIdsState((prev) => {
+      const next = new Set(prev);
+      if (next.has(clipId)) next.delete(clipId);
+      else next.add(clipId);
+      return next;
+    });
+  }, []);
+  const primarySelectedClipId = selectedClipIds.values().next().value as string | undefined;
   const [pendingMutation, setPendingMutation] = useState(false);
   const [zoom, setZoom] = useState(ZOOM_DEFAULT);
   const [slipKeyHeld, setSlipKeyHeld] = useState(false);
@@ -353,8 +365,11 @@ export function EditorWorkbench({
   );
 
   const explicitlySelectedClip = useMemo(
-    () => (selectedClipId ? localClips.find((c) => c.id === selectedClipId) : undefined),
-    [localClips, selectedClipId],
+    () =>
+      primarySelectedClipId
+        ? localClips.find((c) => c.id === primarySelectedClipId)
+        : undefined,
+    [localClips, primarySelectedClipId],
   );
   // Selection drives the inspector / action bar / notes — sticky once you click a clip.
   const selectedClip =
@@ -493,20 +508,30 @@ export function EditorWorkbench({
   }, [isCurrentPass, playheadTime, project.id, router, selectedClip]);
 
   const deleteSelected = useCallback(async () => {
-    if (!isCurrentPass || !selectedClip) return;
+    if (!isCurrentPass) return;
+    const ids =
+      selectedClipIds.size > 0
+        ? Array.from(selectedClipIds)
+        : selectedClip
+          ? [selectedClip.id]
+          : [];
+    if (ids.length === 0) return;
     setPendingMutation(true);
     try {
-      await deleteTimelineClipAction({
-        projectId: project.id,
-        itemId: selectedClip.id,
-        clipLabel: clipName(selectedClip),
-      });
-      setSelectedClipId(undefined);
+      for (const id of ids) {
+        const clip = localClips.find((c) => c.id === id);
+        await deleteTimelineClipAction({
+          projectId: project.id,
+          itemId: id,
+          clipLabel: clip ? clipName(clip) : undefined,
+        });
+      }
+      setSelectedClipIdsState(new Set());
       router.refresh();
     } finally {
       setPendingMutation(false);
     }
-  }, [isCurrentPass, project.id, router, selectedClip]);
+  }, [isCurrentPass, localClips, project.id, router, selectedClip, selectedClipIds]);
 
   const duplicateSelected = useCallback(async () => {
     if (!isCurrentPass || !selectedClip) return;
@@ -684,7 +709,7 @@ export function EditorWorkbench({
     setPlayheadTime(0);
     setIsPlaying(false);
     setScrollSignal((value) => value + 1);
-    setSelectedClipId(undefined);
+    setSelectedClipIdsState(new Set());
   }
 
   function seekToTime(nextTime: number) {
@@ -692,10 +717,13 @@ export function EditorWorkbench({
     setPlayheadTime(boundedTime);
   }
 
-  function selectClip(clipId: string) {
+  function selectClip(clipId: string, additive = false) {
     const clip = localClips.find((item) => item.id === clipId);
-    if (clip) {
-      setSelectedClipId(clipId);
+    if (!clip) return;
+    if (additive) {
+      toggleClipInSelection(clipId);
+    } else {
+      setSelectedClipIds([clipId]);
       setPlayheadTime(clip.timelineStart);
     }
   }
@@ -709,7 +737,7 @@ export function EditorWorkbench({
     if (selectedClipIndex < 0) return;
     const nextClip = localClips[clamp(selectedClipIndex + direction, 0, localClips.length - 1)];
     if (!nextClip) return;
-    setSelectedClipId(nextClip.id);
+    setSelectedClipIds([nextClip.id]);
     setPlayheadTime(nextClip.timelineStart);
     setScrollSignal((value) => value + 1);
   }
@@ -768,12 +796,14 @@ export function EditorWorkbench({
         editable={isCurrentPass}
         canSplit={
           isCurrentPass &&
+          selectedClipIds.size <= 1 &&
           !!selectedClip &&
           playheadTime > selectedClip.timelineStart + 0.1 &&
           playheadTime < selectedClip.timelineEnd - 0.1
         }
         canUndo={historyCursor > 0}
         canRedo={historyCursor < history.length}
+        selectionCount={selectedClipIds.size}
         selectedClipName={selectedClip ? clipName(selectedClip) : undefined}
         onSplit={splitAtPlayhead}
         onDelete={deleteSelected}
@@ -785,7 +815,7 @@ export function EditorWorkbench({
       <TimelinePanel
         clips={localClips}
         notes={notes}
-        selectedClipId={selectedClip?.id}
+        selectedClipIds={selectedClipIds}
         playheadTime={playheadTime}
         followPlayhead={followPlayhead}
         scrollSignal={scrollSignal}
@@ -793,6 +823,7 @@ export function EditorWorkbench({
         pxPerSecond={zoom}
         slipKeyHeld={slipKeyHeld}
         onSelectClip={selectClip}
+        onSetSelection={(ids) => setSelectedClipIds(ids)}
         onSeek={seekToTime}
         onClipPreview={previewClipChange}
         onClipCommit={(id, patch) => void commitClipChange(id, patch)}
@@ -1079,6 +1110,7 @@ function ClipActionBar({
   canSplit,
   canUndo,
   canRedo,
+  selectionCount,
   selectedClipName,
   onSplit,
   onDelete,
@@ -1090,6 +1122,7 @@ function ClipActionBar({
   canSplit: boolean;
   canUndo: boolean;
   canRedo: boolean;
+  selectionCount: number;
   selectedClipName?: string;
   onSplit: () => void;
   onDelete: () => void;
@@ -1099,12 +1132,12 @@ function ClipActionBar({
 }) {
   const buttonCls =
     "inline-flex h-7 items-center gap-1 rounded border border-neutral-700 bg-neutral-800 px-2 text-xs font-semibold text-neutral-300 transition hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-40";
+  const caption =
+    selectionCount > 1 ? `${selectionCount} clips selected` : selectedClipName ?? "—";
   return (
     <div className="flex flex-none flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-1.5">
       <span className="text-[10px] uppercase tracking-widest text-neutral-500">Clip</span>
-      <span className="text-xs text-neutral-400">
-        {selectedClipName ?? "—"}
-      </span>
+      <span className="text-xs text-neutral-400">{caption}</span>
       <div className="flex flex-wrap items-center gap-1.5 ml-auto">
         <button
           type="button"

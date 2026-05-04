@@ -127,7 +127,7 @@ type DragState = {
 export function TimelinePanel({
   clips,
   notes,
-  selectedClipId,
+  selectedClipIds,
   playheadTime = 0,
   followPlayhead = false,
   scrollSignal = 0,
@@ -135,28 +135,42 @@ export function TimelinePanel({
   pxPerSecond = DEFAULT_PX_PER_SECOND,
   slipKeyHeld = false,
   onSelectClip,
+  onSetSelection,
   onSeek,
   onClipPreview,
   onClipCommit,
 }: {
   clips: TimelineClip[];
   notes: Note[];
-  selectedClipId?: string;
+  selectedClipIds: Set<string>;
   playheadTime?: number;
   followPlayhead?: boolean;
   scrollSignal?: number;
   editable?: boolean;
   pxPerSecond?: number;
   slipKeyHeld?: boolean;
-  onSelectClip?: (clipId: string) => void;
+  onSelectClip?: (clipId: string, additive?: boolean) => void;
+  onSetSelection?: (clipIds: string[]) => void;
   onSeek?: (time: number) => void;
   onClipPreview?: (clipId: string, patch: ClipPatch) => void;
   onClipCommit?: (clipId: string, patch: ClipPatch) => void;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const trackAreaRef = useRef<HTMLDivElement>(null);
   const lastScrollSignal = useRef(scrollSignal);
   const dragRef = useRef<DragState | null>(null);
+  const marqueeRef = useRef<{
+    startX: number;
+    startY: number;
+    additive: boolean;
+    baseSelection: Set<string>;
+    active: boolean;
+  } | null>(null);
   const [hoverDrag, setHoverDrag] = useState(false);
+  const [marqueeBox, setMarqueeBox] = useState<
+    | { left: number; top: number; width: number; height: number }
+    | null
+  >(null);
   const totalSeconds = Math.ceil(
     Math.max(60, ...clips.map((clip) => clip.timelineEnd)) / 15,
   ) * 15;
@@ -214,6 +228,88 @@ export function TimelinePanel({
     const rect = event.currentTarget.getBoundingClientRect();
     const x = event.clientX - rect.left;
     onSeek(Math.max(0, x / pxPerSecond));
+  }
+
+  function handleLanePointerDown(event: ReactPointerEvent<HTMLDivElement>) {
+    if (event.button !== 0) return;
+    if (event.target !== event.currentTarget) return;
+    const trackArea = trackAreaRef.current;
+    if (!trackArea) return;
+
+    // trackArea is the inner grid that includes the 92px label column and the
+    // 24px ruler. Convert to track-relative coords (origin at top-left of the
+    // first lane's clip area) by subtracting both.
+    const TRACK_OFFSET_X = 92;
+    const TRACK_OFFSET_Y = 24;
+    const gridRect = trackArea.getBoundingClientRect();
+    const startX = event.clientX - gridRect.left - TRACK_OFFSET_X;
+    const startY = event.clientY - gridRect.top - TRACK_OFFSET_Y;
+    const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+
+    marqueeRef.current = {
+      startX,
+      startY,
+      additive,
+      baseSelection: new Set(selectedClipIds),
+      active: false,
+    };
+
+    function onMove(e: PointerEvent) {
+      const m = marqueeRef.current;
+      if (!m) return;
+      const rect = trackArea!.getBoundingClientRect();
+      const x = e.clientX - rect.left - TRACK_OFFSET_X;
+      const y = e.clientY - rect.top - TRACK_OFFSET_Y;
+      const dist = Math.abs(x - m.startX) + Math.abs(y - m.startY);
+      if (!m.active && dist < 4) return;
+      m.active = true;
+
+      const left = Math.max(0, Math.min(m.startX, x));
+      const top = Math.max(0, Math.min(m.startY, y));
+      const width = Math.abs(x - m.startX);
+      const height = Math.abs(y - m.startY);
+      setMarqueeBox({ left, top, width, height });
+
+      const startTime = left / pxPerSecond;
+      const endTime = (left + width) / pxPerSecond;
+      const startLane = Math.floor(top / LANE_HEIGHT);
+      const endLane = Math.floor((top + height) / LANE_HEIGHT);
+      const intersected: string[] = [];
+      for (const clip of clips) {
+        const laneIdx = roleIndex[clip.role];
+        if (laneIdx < startLane || laneIdx > endLane) continue;
+        if (clip.timelineEnd <= startTime || clip.timelineStart >= endTime) continue;
+        intersected.push(clip.id);
+      }
+      const next = m.additive
+        ? new Set([...m.baseSelection, ...intersected])
+        : new Set(intersected);
+      onSetSelection?.(Array.from(next));
+    }
+
+    function onUp(e: PointerEvent) {
+      const m = marqueeRef.current;
+      const wasActive = !!m?.active;
+      cleanup();
+      if (!wasActive) {
+        // No drag — treat as a plain seek click on empty timeline space.
+        const rect = trackArea!.getBoundingClientRect();
+        const x = e.clientX - rect.left - TRACK_OFFSET_X;
+        onSeek?.(Math.max(0, x / pxPerSecond));
+      }
+    }
+
+    function cleanup() {
+      marqueeRef.current = null;
+      setMarqueeBox(null);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", cleanup);
+    }
+
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", cleanup);
   }
 
   function buildSnapTargets(excludeId: string): number[] {
@@ -420,12 +516,24 @@ export function TimelinePanel({
     <section className="min-w-0 max-w-full overflow-hidden border-y border-neutral-800 bg-neutral-950">
       <div ref={scrollRef} className="w-full max-w-full overflow-x-auto overscroll-x-contain">
         <div
-          className="grid select-none"
+          ref={trackAreaRef}
+          className="relative grid select-none"
           style={{
             gridTemplateColumns: "92px 1fr",
             width: `${timelineWidth + 92}px`,
           }}
         >
+          {marqueeBox ? (
+            <div
+              className="pointer-events-none absolute z-40 rounded border border-blue-400/60 bg-blue-400/10"
+              style={{
+                left: `${marqueeBox.left + 92}px`,
+                top: `${marqueeBox.top + 24}px`,
+                width: `${marqueeBox.width}px`,
+                height: `${marqueeBox.height}px`,
+              }}
+            />
+          ) : null}
           <div className="sticky left-0 z-20 border-r border-neutral-800 bg-neutral-950 px-2 py-1 text-[10px] uppercase tracking-widest text-neutral-600">
             tracks
           </div>
@@ -464,7 +572,7 @@ export function TimelinePanel({
                 </div>
                 <div
                   className="relative h-14 cursor-crosshair border-t border-neutral-800/60 bg-neutral-900/40"
-                  onClick={seekFromMouse}
+                  onPointerDown={handleLanePointerDown}
                 >
                   <div
                     className="pointer-events-none absolute inset-y-0 z-30 w-px bg-red-500"
@@ -476,7 +584,7 @@ export function TimelinePanel({
                     const rotation = clipRotation(clip);
                     const width = Math.max(48, clip.duration * pxPerSecond - 2);
                     const notesForClip = noteCounts.get(clip.id) ?? 0;
-                    const isSelected = selectedClipId === clip.id;
+                    const isSelected = selectedClipIds.has(clip.id);
                     const colorClass = isSelected
                       ? clipSelected[clip.role]
                       : clipBase[clip.role];
@@ -490,7 +598,8 @@ export function TimelinePanel({
                         }
                         onClick={(event) => {
                           event.stopPropagation();
-                          onSelectClip?.(clip.id);
+                          const additive = event.metaKey || event.ctrlKey || event.shiftKey;
+                          onSelectClip?.(clip.id, additive);
                         }}
                         className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass} ${
                           editable
