@@ -123,6 +123,11 @@ export type TimelineItem = {
   rotationOverride?: 0 | 90 | 180 | 270;
   textOverlay?: string;
   notes?: string;
+  /** Who most recently mutated this clip — "user" for UI edits, "ai" for
+   *  scripted/seed/server-action edits. AI editing passes must NOT modify
+   *  any clip whose lastEditedBy is "user" without explicit instruction. */
+  lastEditedBy?: "user" | "ai";
+  lastEditedAt?: string;
 };
 
 export type TimelineClip = TimelineItem & {

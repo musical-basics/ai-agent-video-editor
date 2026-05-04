@@ -167,8 +167,15 @@ function migrate(database: Database.Database) {
   const timelineColumns = database.prepare("PRAGMA table_info(timeline_items)").all() as Array<{
     name: string;
   }>;
-  if (!timelineColumns.some((column) => column.name === "timelineStart")) {
+  const colNames = new Set(timelineColumns.map((c) => c.name));
+  if (!colNames.has("timelineStart")) {
     database.exec("ALTER TABLE timeline_items ADD COLUMN timelineStart REAL");
+  }
+  if (!colNames.has("lastEditedBy")) {
+    database.exec("ALTER TABLE timeline_items ADD COLUMN lastEditedBy TEXT");
+  }
+  if (!colNames.has("lastEditedAt")) {
+    database.exec("ALTER TABLE timeline_items ADD COLUMN lastEditedAt TEXT");
   }
 }
 
@@ -671,6 +678,8 @@ export function getTimelineItems(projectId: string, passId?: string): TimelineIt
     rotationOverride: row.rotationOverride ?? undefined,
     textOverlay: row.textOverlay ?? undefined,
     notes: row.notes ?? undefined,
+    lastEditedBy: row.lastEditedBy ?? undefined,
+    lastEditedAt: row.lastEditedAt ?? undefined,
   }));
 }
 
@@ -727,17 +736,28 @@ const PATCH_COLUMNS: Record<keyof TimelineItemPatch, string> = {
   section: "section",
 };
 
+export type EditedBy = "user" | "ai";
+
 export function updateTimelineItem(
   projectId: string,
   itemId: string,
   patch: TimelineItemPatch,
+  editedBy: EditedBy = "user",
 ): TimelineItem | undefined {
   const database = getDb();
   const fields = Object.keys(patch) as Array<keyof TimelineItemPatch>;
   if (fields.length === 0) return getTimelineItemById(projectId, itemId);
 
-  const assignments = fields.map((field) => `${PATCH_COLUMNS[field]} = @${field}`).join(", ");
-  const params: Record<string, unknown> = { id: itemId, projectId };
+  const assignments = fields
+    .map((field) => `${PATCH_COLUMNS[field]} = @${field}`)
+    .concat(["lastEditedBy = @lastEditedBy", "lastEditedAt = @lastEditedAt"])
+    .join(", ");
+  const params: Record<string, unknown> = {
+    id: itemId,
+    projectId,
+    lastEditedBy: editedBy,
+    lastEditedAt: now(),
+  };
   for (const field of fields) {
     const value = patch[field];
     if (field === "enabled") {
@@ -771,32 +791,45 @@ export function getTimelineItemById(projectId: string, itemId: string): Timeline
     rotationOverride: row.rotationOverride ?? undefined,
     textOverlay: row.textOverlay ?? undefined,
     notes: row.notes ?? undefined,
+    lastEditedBy: row.lastEditedBy ?? undefined,
+    lastEditedAt: row.lastEditedAt ?? undefined,
   };
 }
 
-export function deleteTimelineItem(projectId: string, itemId: string) {
-  return updateTimelineItem(projectId, itemId, { enabled: false });
+export function deleteTimelineItem(projectId: string, itemId: string, editedBy: EditedBy = "user") {
+  return updateTimelineItem(projectId, itemId, { enabled: false }, editedBy);
 }
 
-export function restoreTimelineItem(projectId: string, itemId: string) {
-  return updateTimelineItem(projectId, itemId, { enabled: true });
+export function restoreTimelineItem(
+  projectId: string,
+  itemId: string,
+  editedBy: EditedBy = "user",
+) {
+  return updateTimelineItem(projectId, itemId, { enabled: true }, editedBy);
 }
 
-export function duplicateTimelineItem(projectId: string, itemId: string): TimelineItem | undefined {
+export function duplicateTimelineItem(
+  projectId: string,
+  itemId: string,
+  editedBy: EditedBy = "user",
+): TimelineItem | undefined {
   const source = getTimelineItemById(projectId, itemId);
   if (!source) return undefined;
   const newId = randomUUID();
   const duration =
     source.targetDuration ?? Math.max(1, (source.sourceOut ?? 0) - (source.sourceIn ?? 0));
   const offset = duration;
+  const stamp = now();
   getDb()
     .prepare(
       `INSERT INTO timeline_items (
         id, projectId, assetId, passId, section, "order", timelineStart, sourceIn, sourceOut,
-        targetDuration, role, enabled, rotationOverride, textOverlay, notes
+        targetDuration, role, enabled, rotationOverride, textOverlay, notes,
+        lastEditedBy, lastEditedAt
       ) VALUES (
         @id, @projectId, @assetId, @passId, @section, @order, @timelineStart, @sourceIn, @sourceOut,
-        @targetDuration, @role, @enabled, @rotationOverride, @textOverlay, @notes
+        @targetDuration, @role, @enabled, @rotationOverride, @textOverlay, @notes,
+        @lastEditedBy, @lastEditedAt
       )`,
     )
     .run({
@@ -816,6 +849,8 @@ export function duplicateTimelineItem(projectId: string, itemId: string): Timeli
       rotationOverride: source.rotationOverride ?? null,
       textOverlay: source.textOverlay ?? null,
       notes: source.notes ?? null,
+      lastEditedBy: editedBy,
+      lastEditedAt: stamp,
     });
   return getTimelineItemById(projectId, newId);
 }
@@ -824,6 +859,7 @@ export function splitTimelineItem(
   projectId: string,
   itemId: string,
   splitAtMasterTime: number,
+  editedBy: EditedBy = "user",
 ): { left: TimelineItem; right: TimelineItem } | undefined {
   const source = getTimelineItemById(projectId, itemId);
   if (!source) return undefined;
@@ -841,12 +877,18 @@ export function splitTimelineItem(
   const offsetIntoClip = splitAtMasterTime - start;
   const sourceIn = source.sourceIn ?? 0;
   const splitInSource = sourceIn + offsetIntoClip;
+  const stamp = now();
 
   // Update left half: keep id, shorten
-  updateTimelineItem(projectId, itemId, {
-    sourceOut: splitInSource,
-    targetDuration: offsetIntoClip,
-  });
+  updateTimelineItem(
+    projectId,
+    itemId,
+    {
+      sourceOut: splitInSource,
+      targetDuration: offsetIntoClip,
+    },
+    editedBy,
+  );
 
   // Insert right half
   const rightId = randomUUID();
@@ -854,10 +896,12 @@ export function splitTimelineItem(
     .prepare(
       `INSERT INTO timeline_items (
         id, projectId, assetId, passId, section, "order", timelineStart, sourceIn, sourceOut,
-        targetDuration, role, enabled, rotationOverride, textOverlay, notes
+        targetDuration, role, enabled, rotationOverride, textOverlay, notes,
+        lastEditedBy, lastEditedAt
       ) VALUES (
         @id, @projectId, @assetId, @passId, @section, @order, @timelineStart, @sourceIn, @sourceOut,
-        @targetDuration, @role, @enabled, @rotationOverride, @textOverlay, @notes
+        @targetDuration, @role, @enabled, @rotationOverride, @textOverlay, @notes,
+        @lastEditedBy, @lastEditedAt
       )`,
     )
     .run({
@@ -876,6 +920,8 @@ export function splitTimelineItem(
       rotationOverride: source.rotationOverride ?? null,
       textOverlay: source.textOverlay ?? null,
       notes: source.notes ?? null,
+      lastEditedBy: editedBy,
+      lastEditedAt: stamp,
     });
 
   const left = getTimelineItemById(projectId, itemId)!;
