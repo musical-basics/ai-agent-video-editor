@@ -30,6 +30,8 @@ import {
   Square,
   Trash2,
   Undo2,
+  ZoomIn,
+  ZoomOut,
   type LucideIcon,
 } from "lucide-react";
 import {
@@ -39,7 +41,13 @@ import {
   splitTimelineClipAction,
   updateTimelineClipAction,
 } from "@/app/actions";
-import { TimelinePanel, type ClipPatch } from "@/components/timeline-panel";
+import {
+  TimelinePanel,
+  ZOOM_DEFAULT,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  type ClipPatch,
+} from "@/components/timeline-panel";
 import type {
   Note,
   NoteType,
@@ -263,6 +271,22 @@ export function EditorWorkbench({
   const [scrollSignal, setScrollSignal] = useState(0);
   const [selectedClipId, setSelectedClipId] = useState<string | undefined>();
   const [pendingMutation, setPendingMutation] = useState(false);
+  const [zoom, setZoom] = useState(ZOOM_DEFAULT);
+
+  const zoomBy = useCallback(
+    (factor: number) => {
+      setZoom((current) => {
+        const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, current * factor));
+        return Math.round(next * 100) / 100;
+      });
+      setScrollSignal((value) => value + 1);
+    },
+    [],
+  );
+  const resetZoom = useCallback(() => {
+    setZoom(ZOOM_DEFAULT);
+    setScrollSignal((value) => value + 1);
+  }, []);
 
   const visibleTimelineClips = useMemo(
     () => timelineClips.filter((clip) => clip.passId === selectedPassId),
@@ -547,6 +571,23 @@ export function EditorWorkbench({
         void duplicateSelected();
         return;
       }
+      // Zoom — Cmd+= / Cmd++ to zoom in, Cmd+- to zoom out, Cmd+0 to reset.
+      // event.key handles both unshifted and shifted variants on US layouts.
+      if (meta && (event.key === "=" || event.key === "+")) {
+        event.preventDefault();
+        zoomBy(1.5);
+        return;
+      }
+      if (meta && event.key === "-") {
+        event.preventDefault();
+        zoomBy(1 / 1.5);
+        return;
+      }
+      if (meta && event.key === "0") {
+        event.preventDefault();
+        resetZoom();
+        return;
+      }
       if (event.key === "Delete" || event.key === "Backspace") {
         if (selectedClip && isCurrentPass) {
           event.preventDefault();
@@ -569,9 +610,11 @@ export function EditorWorkbench({
     duplicateSelected,
     isCurrentPass,
     redo,
+    resetZoom,
     selectedClip,
     splitAtPlayhead,
     undo,
+    zoomBy,
   ]);
 
   function applyQuickAction(action: QuickAction) {
@@ -686,6 +729,7 @@ export function EditorWorkbench({
         followPlayhead={followPlayhead}
         playheadTime={playheadTime}
         totalDuration={totalDuration}
+        zoom={zoom}
         onTogglePlay={() => setIsPlaying((value) => !value)}
         onStop={stopPlayback}
         onJumpPrevious={() => jumpToClip(-1)}
@@ -693,6 +737,9 @@ export function EditorWorkbench({
         onSeek={seekToTime}
         onScrollToCursor={() => setScrollSignal((value) => value + 1)}
         onToggleFollow={() => setFollowPlayhead((value) => !value)}
+        onZoomIn={() => zoomBy(1.5)}
+        onZoomOut={() => zoomBy(1 / 1.5)}
+        onZoomReset={resetZoom}
       />
 
       <ClipActionBar
@@ -721,6 +768,7 @@ export function EditorWorkbench({
         followPlayhead={followPlayhead}
         scrollSignal={scrollSignal}
         editable={isCurrentPass}
+        pxPerSecond={zoom}
         onSelectClip={selectClip}
         onSeek={seekToTime}
         onClipPreview={previewClipChange}
@@ -1002,6 +1050,7 @@ function TransportBar({
   followPlayhead,
   playheadTime,
   totalDuration,
+  zoom,
   onTogglePlay,
   onStop,
   onJumpPrevious,
@@ -1009,11 +1058,15 @@ function TransportBar({
   onSeek,
   onScrollToCursor,
   onToggleFollow,
+  onZoomIn,
+  onZoomOut,
+  onZoomReset,
 }: {
   isPlaying: boolean;
   followPlayhead: boolean;
   playheadTime: number;
   totalDuration: number;
+  zoom: number;
   onTogglePlay: () => void;
   onStop: () => void;
   onJumpPrevious: () => void;
@@ -1021,6 +1074,9 @@ function TransportBar({
   onSeek: (time: number) => void;
   onScrollToCursor: () => void;
   onToggleFollow: () => void;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onZoomReset: () => void;
 }) {
   return (
     <div className="flex flex-none flex-wrap items-center gap-2 border-b border-neutral-800 bg-neutral-900 px-3 py-1.5">
@@ -1094,6 +1150,31 @@ function TransportBar({
         }`}
       >
         Follow
+      </button>
+      <span className="mx-1 h-4 w-px bg-neutral-700" />
+      <button
+        type="button"
+        onClick={onZoomOut}
+        title="Zoom out (⌘-)"
+        className="inline-flex h-7 w-7 items-center justify-center rounded border border-neutral-700 bg-neutral-800 text-neutral-300 transition hover:bg-neutral-700"
+      >
+        <ZoomOut className="h-3.5 w-3.5" aria-hidden="true" />
+      </button>
+      <button
+        type="button"
+        onClick={onZoomReset}
+        title="Reset zoom (⌘0)"
+        className="inline-flex h-7 min-w-[58px] items-center justify-center rounded border border-neutral-700 bg-neutral-800 px-1 text-[11px] font-semibold tabular-nums text-neutral-300 transition hover:bg-neutral-700"
+      >
+        {Math.round((zoom / ZOOM_DEFAULT) * 100)}%
+      </button>
+      <button
+        type="button"
+        onClick={onZoomIn}
+        title="Zoom in (⌘=)"
+        className="inline-flex h-7 w-7 items-center justify-center rounded border border-neutral-700 bg-neutral-800 text-neutral-300 transition hover:bg-neutral-700"
+      >
+        <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
       </button>
       <span className="hidden rounded border border-neutral-700 bg-neutral-800 px-1.5 py-0.5 text-[10px] text-neutral-500 sm:inline-flex">
         Space

@@ -11,9 +11,12 @@ import {
 import { MessageSquareText } from "lucide-react";
 import type { Note, TimelineClip, TimelineRole } from "@/lib/types";
 
-const pxPerSecond = 7;
+const DEFAULT_PX_PER_SECOND = 7;
 const SNAP_PIXELS = 6;
 const LANE_HEIGHT = 56;
+export const ZOOM_MIN = 1.5;
+export const ZOOM_MAX = 60;
+export const ZOOM_DEFAULT = DEFAULT_PX_PER_SECOND;
 
 const laneOrder: Array<{ role: TimelineRole; label: string }> = [
   { role: "title_card", label: "title" },
@@ -129,6 +132,7 @@ export function TimelinePanel({
   followPlayhead = false,
   scrollSignal = 0,
   editable = true,
+  pxPerSecond = DEFAULT_PX_PER_SECOND,
   onSelectClip,
   onSeek,
   onClipPreview,
@@ -141,6 +145,7 @@ export function TimelinePanel({
   followPlayhead?: boolean;
   scrollSignal?: number;
   editable?: boolean;
+  pxPerSecond?: number;
   onSelectClip?: (clipId: string) => void;
   onSeek?: (time: number) => void;
   onClipPreview?: (clipId: string, patch: ClipPatch) => void;
@@ -199,7 +204,7 @@ export function TimelinePanel({
       left: Math.max(0, cursorX - scroller.clientWidth / 2),
       behavior: forced ? "smooth" : "auto",
     });
-  }, [followPlayhead, playheadTime, scrollSignal]);
+  }, [followPlayhead, playheadTime, pxPerSecond, scrollSignal]);
 
   function seekFromMouse(event: MouseEvent<HTMLDivElement>) {
     if (!onSeek) return;
