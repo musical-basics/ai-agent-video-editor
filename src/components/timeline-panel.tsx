@@ -8,7 +8,16 @@ import {
   type MouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { MessageSquareText } from "lucide-react";
+import {
+  AlertTriangle,
+  Clock as ClockIcon,
+  Image as ImageIcon,
+  Lock,
+  MessageSquareText,
+  Volume2,
+} from "lucide-react";
+import type { SemanticIssueReport } from "@/lib/db";
+import { isErrorCode } from "@/lib/db";
 import type { Note, TimelineClip, TimelineRole } from "@/lib/types";
 
 const DEFAULT_PX_PER_SECOND = 7;
@@ -127,6 +136,7 @@ type DragState = {
 export function TimelinePanel({
   clips,
   notes,
+  semanticIssues,
   selectedClipIds,
   playheadTime = 0,
   followPlayhead = false,
@@ -143,6 +153,7 @@ export function TimelinePanel({
 }: {
   clips: TimelineClip[];
   notes: Note[];
+  semanticIssues?: SemanticIssueReport | null;
   selectedClipIds: Set<string>;
   playheadTime?: number;
   followPlayhead?: boolean;
@@ -198,6 +209,24 @@ export function TimelinePanel({
 
     if (matchingNotes.size > 0) {
       noteCounts.set(clip.id, matchingNotes.size);
+    }
+  }
+
+  // Index semantic issues by clip_id for fast per-clip lookup. The
+  // validator's clip_id refers to the timeline_item id, which matches
+  // clip.id here.
+  const issuesByClip = new Map<string, { codes: string[]; messages: string[]; hasError: boolean }>();
+  if (semanticIssues) {
+    for (const issue of semanticIssues.issues) {
+      if (!issue.clip_id) continue;
+      let entry = issuesByClip.get(issue.clip_id);
+      if (!entry) {
+        entry = { codes: [], messages: [], hasError: false };
+        issuesByClip.set(issue.clip_id, entry);
+      }
+      entry.codes.push(issue.code);
+      entry.messages.push(`${issue.code}: ${issue.message}`);
+      if (isErrorCode(issue.code)) entry.hasError = true;
     }
   }
 
@@ -590,6 +619,21 @@ export function TimelinePanel({
                     const colorClass = isSelected
                       ? clipSelected[clip.role]
                       : clipBase[clip.role];
+                    const issues = issuesByClip.get(clip.id);
+                    const isLocked = clip.lastEditedBy === "user";
+                    const issueUnderlineClass = issues
+                      ? issues.hasError
+                        ? "ring-2 ring-red-500/80"
+                        : "ring-2 ring-amber-400/80"
+                      : "";
+                    const codes = issues?.codes ?? [];
+                    const tooltipParts: string[] = [
+                      `${clipLabel(clip)} | ${formatTime(clip.timelineStart)}-${formatTime(clip.timelineEnd)}`,
+                      clip.notes ?? "",
+                    ];
+                    if (isLocked) tooltipParts.push("LOCKED: lastEditedBy=user");
+                    if (issues) tooltipParts.push(...issues.messages);
+                    const title = tooltipParts.filter(Boolean).join(" | ");
 
                     return (
                       <button
@@ -609,7 +653,7 @@ export function TimelinePanel({
                           onSelectClip?.(clip.id);
                           onClipContextMenu?.(clip.id, event.clientX, event.clientY);
                         }}
-                        className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass} ${
+                        className={`absolute top-1.5 flex h-11 flex-col overflow-hidden rounded border text-left transition hover:z-10 focus:outline-none ${colorClass} ${issueUnderlineClass} ${
                           editable
                             ? slipMode
                               ? "cursor-ew-resize"
@@ -620,7 +664,7 @@ export function TimelinePanel({
                           left: `${clip.timelineStart * pxPerSecond}px`,
                           width: `${width}px`,
                         }}
-                        title={`${clipLabel(clip)} | ${formatTime(clip.timelineStart)}-${formatTime(clip.timelineEnd)} | ${clip.notes ?? ""}`}
+                        title={title}
                       >
                         {editable ? (
                           <span
@@ -669,6 +713,37 @@ export function TimelinePanel({
                           <span className="absolute right-0 top-0 inline-flex items-center gap-0.5 rounded-bl bg-yellow-500 px-1 py-px text-[9px] font-semibold text-black">
                             <MessageSquareText className="h-2.5 w-2.5" aria-hidden="true" />
                             {notesForClip}
+                          </span>
+                        ) : null}
+                        {/* Semantic issue badges: one icon per issue type
+                            so the user can scan codes at a glance. */}
+                        {issues || isLocked ? (
+                          <span className="absolute left-0 top-0 inline-flex items-center gap-0.5 rounded-br bg-black/70 px-1 py-px text-white">
+                            {isLocked ? (
+                              <Lock className="h-2.5 w-2.5 text-amber-400" aria-hidden="true" />
+                            ) : null}
+                            {codes.includes("CHRONOLOGY_ERROR") ? (
+                              <ClockIcon className="h-2.5 w-2.5 text-red-400" aria-hidden="true" />
+                            ) : null}
+                            {codes.includes("DIALOGUE_COLLISION_WARNING") ? (
+                              <Volume2 className="h-2.5 w-2.5 text-amber-300" aria-hidden="true" />
+                            ) : null}
+                            {codes.includes("STILL_UNDER_VO_WARNING") ? (
+                              <ImageIcon className="h-2.5 w-2.5 text-amber-300" aria-hidden="true" />
+                            ) : null}
+                            {codes.some(
+                              (c) =>
+                                c === "VO_CUTOFF_ERROR" ||
+                                c === "MISSING_TIMELINE_START_ERROR" ||
+                                c === "PACING_WARNING",
+                            ) ? (
+                              <AlertTriangle
+                                className={`h-2.5 w-2.5 ${
+                                  issues?.hasError ? "text-red-400" : "text-amber-300"
+                                }`}
+                                aria-hidden="true"
+                              />
+                            ) : null}
                           </span>
                         ) : null}
                       </button>

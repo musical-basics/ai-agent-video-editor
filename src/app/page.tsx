@@ -5,6 +5,7 @@ import {
   getNotes,
   getPasses,
   getRenderJobs,
+  getSemanticIssues,
   getTimelineClips,
 } from "@/lib/db";
 import type { PassStatus } from "@/lib/types";
@@ -60,6 +61,9 @@ export default function Home() {
   const userNotes = notes.filter((note) => note.author === "user");
   const passById = new Map(passes.map((pass) => [pass.id, pass]));
   const clipById = new Map(timelineClips.map((clip) => [clip.id, clip]));
+  const semanticIssues = latestTimelinePass
+    ? getSemanticIssues(latestTimelinePass.id)
+    : null;
 
   return (
     <main className="min-h-screen bg-neutral-950 text-neutral-100">
@@ -101,6 +105,7 @@ export default function Home() {
           timelineClips={timelineClips}
           renderJobs={renderJobs}
           notes={notes}
+          semanticIssues={semanticIssues}
         />
 
         <section className="grid gap-3 lg:grid-cols-2">

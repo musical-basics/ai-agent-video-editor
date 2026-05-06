@@ -623,6 +623,52 @@ export function getActiveProject(): Project {
   };
 }
 
+export type SemanticIssue = {
+  code: string;
+  clip_id: string;
+  window: [number, number] | null;
+  message: string;
+};
+
+export type SemanticIssueReport = {
+  pass_id: string;
+  generated_at: string;
+  summary: { total: number; errors: number; warnings: number; by_code: Record<string, number> };
+  issues: SemanticIssue[];
+};
+
+const ERROR_CODES = new Set([
+  "CHRONOLOGY_ERROR",
+  "VO_CUTOFF_ERROR",
+  "MISSING_TIMELINE_START_ERROR",
+]);
+
+export function isErrorCode(code: string): boolean {
+  return ERROR_CODES.has(code);
+}
+
+/**
+ * Read the JSON sibling that validate_timeline_semantics.py writes to
+ * keyboard-trip/timelines/<passId>-semantic-issues.json. Returns null
+ * if the file is missing — the editor falls back to "no badges shown"
+ * rather than blocking the render.
+ */
+export function getSemanticIssues(passId: string): SemanticIssueReport | null {
+  const reportPath = path.join(
+    pianoProjectRoot,
+    "keyboard-trip",
+    "timelines",
+    `${passId}-semantic-issues.json`,
+  );
+  if (!fs.existsSync(reportPath)) return null;
+  try {
+    const raw = fs.readFileSync(reportPath, "utf8");
+    return JSON.parse(raw) as SemanticIssueReport;
+  } catch {
+    return null;
+  }
+}
+
 export function getPasses(projectId: string): Pass[] {
   return getDb()
     .prepare(`SELECT * FROM passes WHERE projectId = ? ORDER BY "order" ASC`)

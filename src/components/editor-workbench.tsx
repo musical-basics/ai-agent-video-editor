@@ -52,6 +52,7 @@ import {
   ZOOM_MIN,
   type ClipPatch,
 } from "@/components/timeline-panel";
+import type { SemanticIssueReport } from "@/lib/db";
 import type {
   Note,
   NoteType,
@@ -244,12 +245,14 @@ export function EditorWorkbench({
   timelineClips,
   renderJobs,
   notes,
+  semanticIssues,
 }: {
   project: Project;
   passes: Pass[];
   timelineClips: TimelineClip[];
   renderJobs: RenderJob[];
   notes: Note[];
+  semanticIssues: SemanticIssueReport | null;
 }) {
   const router = useRouter();
   const noteFormRef = useRef<HTMLFormElement>(null);
@@ -821,6 +824,7 @@ export function EditorWorkbench({
       <TimelinePanel
         clips={localClips}
         notes={notes}
+        semanticIssues={semanticIssues}
         selectedClipIds={selectedClipIds}
         playheadTime={playheadTime}
         followPlayhead={followPlayhead}
