@@ -16,8 +16,8 @@ import {
   MessageSquareText,
   Volume2,
 } from "lucide-react";
-import type { SemanticIssueReport } from "@/lib/db";
-import { isErrorCode } from "@/lib/db";
+import type { SemanticIssueReport } from "@/lib/semantic-issues";
+import { isErrorCode } from "@/lib/semantic-issues";
 import type { Note, TimelineClip, TimelineRole } from "@/lib/types";
 
 const DEFAULT_PX_PER_SECOND = 7;

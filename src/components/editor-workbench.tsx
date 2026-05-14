@@ -52,7 +52,7 @@ import {
   ZOOM_MIN,
   type ClipPatch,
 } from "@/components/timeline-panel";
-import type { SemanticIssueReport } from "@/lib/db";
+import type { SemanticIssueReport } from "@/lib/semantic-issues";
 import type {
   Note,
   NoteType,

@@ -623,29 +623,13 @@ export function getActiveProject(): Project {
   };
 }
 
-export type SemanticIssue = {
-  code: string;
-  clip_id: string;
-  window: [number, number] | null;
-  message: string;
-};
+// Re-export so existing call sites keep working; the actual definition
+// lives in semantic-issues.ts so client components can import it
+// without dragging better-sqlite3 into the browser bundle.
+export type { SemanticIssue, SemanticIssueReport } from "./semantic-issues";
+export { isErrorCode } from "./semantic-issues";
 
-export type SemanticIssueReport = {
-  pass_id: string;
-  generated_at: string;
-  summary: { total: number; errors: number; warnings: number; by_code: Record<string, number> };
-  issues: SemanticIssue[];
-};
-
-const ERROR_CODES = new Set([
-  "CHRONOLOGY_ERROR",
-  "VO_CUTOFF_ERROR",
-  "MISSING_TIMELINE_START_ERROR",
-]);
-
-export function isErrorCode(code: string): boolean {
-  return ERROR_CODES.has(code);
-}
+import type { SemanticIssueReport } from "./semantic-issues";
 
 /**
  * Read the JSON sibling that validate_timeline_semantics.py writes to
